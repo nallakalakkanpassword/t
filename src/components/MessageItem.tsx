@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, ThumbsUp, ThumbsDown, Coins, Timer, Crown, Gavel } from 'lucide-react';
+import { Clock, ThumbsUp, ThumbsDown, Coins, Timer, AlertCircle, Crown, Gavel } from 'lucide-react';
 import { StorageUtils } from '../utils/storage';
 import { Message } from '../types';
 
@@ -72,7 +72,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   const handleReviewerForceReview = () => {
     // Re-check if all liked users have same letters
     if (calculateAllLikedUsersSameLetters(message)) {
-      alert('Cannot force review: All users who liked and attached coins have the same letters. Wait for like timer to end or for remaining users with same letters to like.');
+      alert('Cannot force review: All users who liked and attached coins have the same letters. The game will conclude automatically when the like timer ends.');
       return;
     }
 
@@ -321,6 +321,12 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   };
 
   const toggleLike = () => {
+    // Non-reviewers must wait for like/dislike timer to expire
+    if (isLikeDislikeTimerActive && message.reviewer !== currentUser) {
+      alert('You can only like/dislike after the like/dislike timer expires (unless you are the reviewer)!');
+      return;
+    }
+
     const updatedMessage = { ...message };
     const likeIndex = updatedMessage.likes.indexOf(currentUser);
     const dislikeIndex = updatedMessage.dislikes.indexOf(currentUser);
@@ -339,6 +345,12 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   };
 
   const toggleDislike = () => {
+    // Non-reviewers must wait for like/dislike timer to expire
+    if (isLikeDislikeTimerActive && message.reviewer !== currentUser) {
+      alert('You can only like/dislike after the like/dislike timer expires (unless you are the reviewer)!');
+      return;
+    }
+
     const updatedMessage = { ...message };
     const likeIndex = updatedMessage.likes.indexOf(currentUser);
     const dislikeIndex = updatedMessage.dislikes.indexOf(currentUser);
@@ -359,6 +371,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   const isOwnMessage = message.sender === currentUser;
   const isReviewer = message.reviewer === currentUser;
   const canInteractDuringMainTimer = isReviewer;
+  const canInteractDuringLikeTimer = isReviewer;
   const allLikedUsersSameLetters = calculateAllLikedUsersSameLetters(message);
 
   return (
@@ -494,7 +507,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
         <div className="flex items-center space-x-4">
           <button
             onClick={toggleLike}
-            disabled={message.gameResult !== undefined}
+            disabled={isLikeDislikeTimerActive && !canInteractDuringLikeTimer}
             className={`flex items-center space-x-2 px-4 py-2 rounded font-medium transition-colors ${
               message.likes.includes(currentUser)
                 ? 'bg-green-500 text-white'
@@ -507,7 +520,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
           
           <button
             onClick={toggleDislike}
-            disabled={message.gameResult !== undefined}
+            disabled={isLikeDislikeTimerActive && !canInteractDuringLikeTimer}
             className={`flex items-center space-x-2 px-4 py-2 rounded font-medium transition-colors ${
               message.dislikes.includes(currentUser)
                 ? 'bg-red-500 text-white'
@@ -530,12 +543,19 @@ export const MessageItem: React.FC<MessageItemProps> = ({
               <span>Force Review</span>
             </button>
           )}
+
+          {(isLikeDislikeTimerActive && !canInteractDuringLikeTimer) && (
+            <div className="flex items-center space-x-1 text-orange-400 text-sm">
+              <AlertCircle className="w-4 h-4" />
+              <span>Wait for like timer or be reviewer</span>
+            </div>
+          )}
         </div>
 
         {/* Status Messages */}
         <div className="text-sm space-y-1">
-          {isLikeDislikeTimerActive && (
-            <div className="text-blue-400">
+          {!isLikeDislikeTimerActive && (
+            <div className="text-green-400">
               ✓ Like/dislike available for all users
             </div>
           )}
