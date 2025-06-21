@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, ThumbsUp, ThumbsDown, Coins, Timer, AlertCircle, Crown } from 'lucide-react';
+import { Clock, ThumbsUp, ThumbsDown, Coins, Timer, Crown, Gavel } from 'lucide-react';
 import { StorageUtils } from '../utils/storage';
 import { Message } from '../types';
 
@@ -56,7 +56,116 @@ export const MessageItem: React.FC<MessageItemProps> = ({
     return () => clearInterval(interval);
   }, [message]);
 
+  // Helper function to check if all users who liked and attached coins have the same letters
+  const calculateAllLikedUsersSameLetters = (msg: Message): boolean => {
+    const attachedUsers = Object.keys(msg.attachedCoins);
+    const usersWhoLiked = msg.likes.filter(user => attachedUsers.includes(user));
+    
+    if (usersWhoLiked.length === 0) return false;
+    
+    const likedUsersLetters = usersWhoLiked.map(user => msg.twoLetters[user]).filter(Boolean);
+    
+    return likedUsersLetters.length > 0 && 
+           likedUsersLetters.every(letters => letters === likedUsersLetters[0]);
+  };
+
+  const handleReviewerForceReview = () => {
+    // Re-check if all liked users have same letters
+    if (calculateAllLikedUsersSameLetters(message)) {
+      alert('Cannot force review: All users who liked and attached coins have the same letters. Wait for like timer to end or for remaining users with same letters to like.');
+      return;
+    }
+
+    // Proceed with reviewer decision
+    const updatedMessage = { ...message };
+    const attachedUsers = Object.keys(updatedMessage.attachedCoins);
+    
+    if (attachedUsers.length === 0) {
+      alert('No coins attached to review.');
+      return;
+    }
+
+    // Distribution with reviewer decision
+    const reviewerLetters = updatedMessage.twoLetters[updatedMessage.reviewer!];
+    
+    let winners: string[] = [];
+    let losers: string[] = [];
+    
+    if (reviewerLetters) {
+      winners = attachedUsers.filter(user => updatedMessage.twoLetters[user] === reviewerLetters);
+      losers = attachedUsers.filter(user => updatedMessage.twoLetters[user] !== reviewerLetters);
+    }
+
+    // Calculate coin distribution
+    const coinsDistributed: { [username: string]: number } = {};
+    const coinsReturned: { [username: string]: number } = {};
+    
+    attachedUsers.forEach(user => {
+      const attachedAmount = updatedMessage.attachedCoins[user];
+      let amountToDistribute = attachedAmount;
+      
+      // Apply penalty for users who liked but are losers in reviewer decision
+      const usersWhoLiked = updatedMessage.likes.filter(u => attachedUsers.includes(u));
+      if (usersWhoLiked.includes(user) && losers.includes(user)) {
+        amountToDistribute = Math.max(0, attachedAmount - 1); // 1 coin penalty from attached coins
+      }
+      
+      if (winners.length > 0 && losers.includes(user)) {
+        // User loses coins - distribute to winners
+        const coinsPerWinner = Math.floor(amountToDistribute / winners.length);
+        const remainder = amountToDistribute % winners.length;
+        
+        winners.forEach((winner, index) => {
+          const bonus = coinsPerWinner + (index === 0 ? remainder : 0);
+          coinsDistributed[winner] = (coinsDistributed[winner] || 0) + bonus;
+        });
+        
+        // Return remaining coins to original user
+        const returnAmount = attachedAmount - amountToDistribute;
+        if (returnAmount > 0) {
+          coinsReturned[user] = returnAmount;
+        }
+      } else {
+        // User keeps their coins (winner or no distribution)
+        coinsReturned[user] = attachedAmount;
+      }
+    });
+
+    // Update user balances
+    Object.entries(coinsDistributed).forEach(([user, amount]) => {
+      const userData = StorageUtils.getUserByUsername(user);
+      if (userData) {
+        StorageUtils.updateUserBalance(user, userData.balance + amount);
+      }
+    });
+
+    Object.entries(coinsReturned).forEach(([user, amount]) => {
+      const userData = StorageUtils.getUserByUsername(user);
+      if (userData) {
+        StorageUtils.updateUserBalance(user, userData.balance + amount);
+      }
+    });
+
+    // Save game result
+    updatedMessage.gameResult = {
+      distributionType: 'reviewer_decision',
+      winners,
+      losers,
+      coinsDistributed,
+      coinsReturned
+    };
+    updatedMessage.isTimerExpired = true;
+    updatedMessage.isLikeDislikeTimerExpired = true;
+
+    StorageUtils.saveMessage(updatedMessage);
+    onUpdate();
+    onBalanceUpdate();
+  };
+
   const processGameResult = () => {
+    // Prevent overwriting already concluded games
+    if (message.gameResult) return;
+
     const updatedMessage = { ...message };
     const attachedUsers = Object.keys(updatedMessage.attachedCoins);
     
@@ -212,11 +321,6 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   };
 
   const toggleLike = () => {
-    if (isLikeDislikeTimerActive && message.reviewer !== currentUser) {
-      alert('You can only like/dislike after the like/dislike timer expires (unless you are the reviewer)!');
-      return;
-    }
-
     const updatedMessage = { ...message };
     const likeIndex = updatedMessage.likes.indexOf(currentUser);
     const dislikeIndex = updatedMessage.dislikes.indexOf(currentUser);
@@ -235,11 +339,6 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   };
 
   const toggleDislike = () => {
-    if (isLikeDislikeTimerActive && message.reviewer !== currentUser) {
-      alert('You can only like/dislike after the like/dislike timer expires (unless you are the reviewer)!');
-      return;
-    }
-
     const updatedMessage = { ...message };
     const likeIndex = updatedMessage.likes.indexOf(currentUser);
     const dislikeIndex = updatedMessage.dislikes.indexOf(currentUser);
@@ -260,7 +359,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   const isOwnMessage = message.sender === currentUser;
   const isReviewer = message.reviewer === currentUser;
   const canInteractDuringMainTimer = isReviewer;
-  const canInteractDuringLikeTimer = isReviewer;
+  const allLikedUsersSameLetters = calculateAllLikedUsersSameLetters(message);
 
   return (
     <div className={`p-4 rounded-lg border-2 transition-all ${
@@ -395,7 +494,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
         <div className="flex items-center space-x-4">
           <button
             onClick={toggleLike}
-            disabled={isLikeDislikeTimerActive && !canInteractDuringLikeTimer}
+            disabled={message.gameResult !== undefined}
             className={`flex items-center space-x-2 px-4 py-2 rounded font-medium transition-colors ${
               message.likes.includes(currentUser)
                 ? 'bg-green-500 text-white'
@@ -408,7 +507,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
           
           <button
             onClick={toggleDislike}
-            disabled={isLikeDislikeTimerActive && !canInteractDuringLikeTimer}
+            disabled={message.gameResult !== undefined}
             className={`flex items-center space-x-2 px-4 py-2 rounded font-medium transition-colors ${
               message.dislikes.includes(currentUser)
                 ? 'bg-red-500 text-white'
@@ -419,10 +518,36 @@ export const MessageItem: React.FC<MessageItemProps> = ({
             <span>{message.dislikes.length}</span>
           </button>
 
-          {(isLikeDislikeTimerActive && !canInteractDuringLikeTimer) && (
-            <div className="flex items-center space-x-1 text-orange-400 text-sm">
-              <AlertCircle className="w-4 h-4" />
-              <span>Wait for like timer or be reviewer</span>
+          {/* Reviewer Force Review Button */}
+          {isReviewer && !message.gameResult && (
+            <button
+              onClick={handleReviewerForceReview}
+              disabled={allLikedUsersSameLetters}
+              className="bg-purple-500 text-white px-4 py-2 rounded font-medium hover:bg-purple-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+              title={allLikedUsersSameLetters ? "Cannot force review: All liked users have same letters" : "Force review as reviewer"}
+            >
+              <Gavel className="w-4 h-4" />
+              <span>Force Review</span>
+            </button>
+          )}
+        </div>
+
+        {/* Status Messages */}
+        <div className="text-sm space-y-1">
+          {isLikeDislikeTimerActive && (
+            <div className="text-blue-400">
+              ✓ Like/dislike available for all users
+            </div>
+          )}
+          {allLikedUsersSameLetters && Object.keys(message.attachedCoins).length > 0 && (
+            <div className="text-green-400">
+              ✓ All users who liked have same letters - automatic distribution when like timer ends
+            </div>
+          )}
+          {isReviewer && !allLikedUsersSameLetters && Object.keys(message.attachedCoins).length > 0 && (
+            <div className="text-purple-400 flex items-center space-x-1">
+              <Crown className="w-3 h-3" />
+              <span>You can force review or wait for like timer to end</span>
             </div>
           )}
         </div>
