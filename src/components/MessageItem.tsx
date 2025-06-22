@@ -69,10 +69,30 @@ export const MessageItem: React.FC<MessageItemProps> = ({
            likedUsersLetters.every(letters => letters === likedUsersLetters[0]);
   };
 
+  // Helper function to check if all attached users have participated in like/dislike
+  const allAttachedUsersParticipated = (msg: Message): boolean => {
+    const attachedUsers = Object.keys(msg.attachedCoins);
+    if (attachedUsers.length === 0) return true;
+    
+    const participatedUsers = [...msg.likes, ...msg.dislikes];
+    return attachedUsers.every(user => participatedUsers.includes(user));
+  };
+
+  // Helper function to check if automatic distribution can happen
+  const canAutoDistribute = (msg: Message): boolean => {
+    const allLikedSameLetters = calculateAllLikedUsersSameLetters(msg);
+    const allParticipated = allAttachedUsersParticipated(msg);
+    
+    // Can auto-distribute if:
+    // 1. All users who liked have same letters AND all attached users participated, OR
+    // 2. Like timer expired and all attached users participated
+    return (allLikedSameLetters && allParticipated) || (!isLikeDislikeTimerActive && allParticipated);
+  };
+
   const handleReviewerForceReview = () => {
-    // Re-check if all liked users have same letters
-    if (calculateAllLikedUsersSameLetters(message)) {
-      alert('Cannot force review: All users who liked and attached coins have the same letters. The game will conclude automatically when the like timer ends.');
+    // Check if automatic distribution is possible
+    if (canAutoDistribute(message)) {
+      alert('Cannot force review: Either all users who liked have the same letters and everyone participated, or the like timer has expired and everyone participated. The game will conclude automatically.');
       return;
     }
 
@@ -170,6 +190,16 @@ export const MessageItem: React.FC<MessageItemProps> = ({
     const attachedUsers = Object.keys(updatedMessage.attachedCoins);
     
     if (attachedUsers.length === 0) {
+      StorageUtils.saveMessage(updatedMessage);
+      return;
+    }
+
+    // Check if all attached users have participated
+    const allParticipated = allAttachedUsersParticipated(updatedMessage);
+    
+    if (!allParticipated) {
+      // Not all users participated, game cannot conclude automatically
+      // Wait for reviewer decision or more participation
       StorageUtils.saveMessage(updatedMessage);
       return;
     }
@@ -283,9 +313,9 @@ export const MessageItem: React.FC<MessageItemProps> = ({
       return;
     }
 
-    // Check if user can still interact
-    if (!isMainTimerActive && message.reviewer !== currentUser) {
-      alert('Main timer has expired! Only the reviewer can interact now.');
+    // Check if main timer is active - no one can attach coins after it expires
+    if (!isMainTimerActive) {
+      alert('Main timer has expired! No one can attach coins anymore.');
       return;
     }
 
@@ -307,8 +337,9 @@ export const MessageItem: React.FC<MessageItemProps> = ({
       return;
     }
 
-    if (!isMainTimerActive && message.reviewer !== currentUser) {
-      alert('Main timer has expired! Only the reviewer can interact now.');
+    // Check if main timer is active - no one can set letters after it expires
+    if (!isMainTimerActive) {
+      alert('Main timer has expired! No one can set letters anymore.');
       return;
     }
 
@@ -370,9 +401,9 @@ export const MessageItem: React.FC<MessageItemProps> = ({
 
   const isOwnMessage = message.sender === currentUser;
   const isReviewer = message.reviewer === currentUser;
-  const canInteractDuringMainTimer = isReviewer;
   const canInteractDuringLikeTimer = isReviewer;
   const allLikedUsersSameLetters = calculateAllLikedUsersSameLetters(message);
+  const allParticipated = allAttachedUsersParticipated(message);
 
   return (
     <div className={`p-4 rounded-lg border-2 transition-all ${
@@ -465,21 +496,18 @@ export const MessageItem: React.FC<MessageItemProps> = ({
             className="px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white text-sm w-24"
             min="0"
             step="0.01"
-            disabled={!isMainTimerActive && !canInteractDuringMainTimer}
+            disabled={!isMainTimerActive}
           />
           <button
             onClick={attachCoins}
-            disabled={!attachAmount || (!isMainTimerActive && !canInteractDuringMainTimer)}
+            disabled={!attachAmount || !isMainTimerActive}
             className="bg-yellow-400 text-gray-900 px-4 py-2 rounded font-medium hover:bg-yellow-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
           >
             <Coins className="w-4 h-4" />
             <span>Attach t</span>
           </button>
-          {isReviewer && (
-            <span className="text-purple-400 text-sm flex items-center space-x-1">
-              <Crown className="w-3 h-3" />
-              <span>Reviewer privilege</span>
-            </span>
+          {!isMainTimerActive && (
+            <span className="text-red-400 text-sm">Main timer expired</span>
           )}
         </div>
 
@@ -492,11 +520,11 @@ export const MessageItem: React.FC<MessageItemProps> = ({
             placeholder="AB"
             className="px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white text-sm w-20 text-center font-bold"
             maxLength={2}
-            disabled={!isMainTimerActive && !canInteractDuringMainTimer}
+            disabled={!isMainTimerActive}
           />
           <button
             onClick={setLetters}
-            disabled={twoLetters.length !== 2 || (!isMainTimerActive && !canInteractDuringMainTimer)}
+            disabled={twoLetters.length !== 2 || !isMainTimerActive}
             className="bg-blue-500 text-white px-4 py-2 rounded font-medium hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Set Letters
@@ -535,9 +563,9 @@ export const MessageItem: React.FC<MessageItemProps> = ({
           {isReviewer && !message.gameResult && (
             <button
               onClick={handleReviewerForceReview}
-              disabled={allLikedUsersSameLetters}
+              disabled={canAutoDistribute(message)}
               className="bg-purple-500 text-white px-4 py-2 rounded font-medium hover:bg-purple-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-              title={allLikedUsersSameLetters ? "Cannot force review: All liked users have same letters" : "Force review as reviewer"}
+              title={canAutoDistribute(message) ? "Cannot force review: Game can conclude automatically" : "Force review as reviewer"}
             >
               <Gavel className="w-4 h-4" />
               <span>Force Review</span>
@@ -559,15 +587,25 @@ export const MessageItem: React.FC<MessageItemProps> = ({
               ✓ Like/dislike available for all users
             </div>
           )}
-          {allLikedUsersSameLetters && Object.keys(message.attachedCoins).length > 0 && (
+          {allLikedUsersSameLetters && allParticipated && Object.keys(message.attachedCoins).length > 0 && (
             <div className="text-green-400">
-              ✓ All users who liked have same letters - automatic distribution when like timer ends
+              ✓ All users who liked have same letters and everyone participated - automatic distribution when like timer ends
             </div>
           )}
-          {isReviewer && !allLikedUsersSameLetters && Object.keys(message.attachedCoins).length > 0 && (
+          {allLikedUsersSameLetters && !allParticipated && Object.keys(message.attachedCoins).length > 0 && (
+            <div className="text-orange-400">
+              ⚠ All users who liked have same letters, but not everyone participated - waiting for more participation or reviewer decision
+            </div>
+          )}
+          {!allParticipated && Object.keys(message.attachedCoins).length > 0 && (
+            <div className="text-orange-400">
+              ⚠ Not all users have participated in like/dislike - waiting for participation or reviewer decision
+            </div>
+          )}
+          {isReviewer && !canAutoDistribute(message) && Object.keys(message.attachedCoins).length > 0 && (
             <div className="text-purple-400 flex items-center space-x-1">
               <Crown className="w-3 h-3" />
-              <span>You can force review or wait for like timer to end</span>
+              <span>You can force review or wait for more participation</span>
             </div>
           )}
         </div>
@@ -608,13 +646,27 @@ export const MessageItem: React.FC<MessageItemProps> = ({
             ))}
           </div>
 
+          {/* Participation Status */}
+          <div className="mt-3 p-2 bg-gray-700 rounded">
+            <p className="text-gray-300 text-sm">
+              <strong>Participation:</strong> {message.likes.length + message.dislikes.length} of {Object.keys(message.attachedCoins).length} users have voted
+            </p>
+            {!allParticipated && (
+              <p className="text-orange-400 text-xs mt-1">
+                Waiting for: {Object.keys(message.attachedCoins).filter(user => 
+                  !message.likes.includes(user) && !message.dislikes.includes(user)
+                ).join(', ')}
+              </p>
+            )}
+          </div>
+
           {/* Game Result Display */}
           {message.gameResult && (
             <div className="mt-3 p-3 bg-purple-900/30 border border-purple-500 rounded">
               <p className="text-purple-300 text-sm font-medium mb-2">
                 <strong>Game Result:</strong> {
                   message.gameResult.distributionType === 'unanimous_likes' 
-                    ? 'All users who liked had same letters - distributed without reviewer!'
+                    ? 'All users who liked had same letters and everyone participated - distributed without reviewer!'
                     : 'Distribution based on reviewer decision'
                 }
               </p>
