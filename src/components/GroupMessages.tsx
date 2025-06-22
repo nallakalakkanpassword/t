@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Send, MessageCircle, Users } from 'lucide-react';
+import { Send, MessageCircle, Users, Settings } from 'lucide-react';
 import { StorageUtils } from '../utils/storage';
 import { Message, Group } from '../types';
 import { MessageItem } from './MessageItem';
@@ -17,6 +17,7 @@ export const GroupMessages: React.FC<GroupMessagesProps> = ({ username, groups, 
   const [likeDislikeTimer, setLikeDislikeTimer] = useState(3);
   const [percentage, setPercentage] = useState('');
   const [reviewer, setReviewer] = useState('');
+  const [coinAttachmentMode, setCoinAttachmentMode] = useState<'same' | 'different'>('different');
   const [messages, setMessages] = useState<Message[]>([]);
 
   useEffect(() => {
@@ -51,7 +52,8 @@ export const GroupMessages: React.FC<GroupMessagesProps> = ({ username, groups, 
       percentage: percentage ? parseFloat(percentage) : undefined,
       reviewer: reviewer || undefined,
       isTimerExpired: false,
-      isLikeDislikeTimerExpired: false
+      isLikeDislikeTimerExpired: false,
+      coinAttachmentMode: coinAttachmentMode
     };
 
     StorageUtils.saveMessage(message);
@@ -119,7 +121,7 @@ export const GroupMessages: React.FC<GroupMessagesProps> = ({ username, groups, 
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                 <div>
                   <label className="block text-gray-300 text-sm font-medium mb-2">
                     Main Timer (minutes)
@@ -182,6 +184,34 @@ export const GroupMessages: React.FC<GroupMessagesProps> = ({ username, groups, 
                     <option value={username}>{username} (you)</option>
                   </select>
                 </div>
+
+                <div>
+                  <label className="block text-gray-300 text-sm font-medium mb-2">
+                    Coin Attachment Mode
+                  </label>
+                  <select
+                    value={coinAttachmentMode}
+                    onChange={(e) => setCoinAttachmentMode(e.target.value as 'same' | 'different')}
+                    className="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                  >
+                    <option value="different">Different Amounts</option>
+                    <option value="same">Same Amount Only</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Coin Attachment Mode Explanation */}
+              <div className="bg-gray-600 p-3 rounded-lg">
+                <div className="flex items-center space-x-2 mb-2">
+                  <Settings className="w-4 h-4 text-yellow-400" />
+                  <span className="text-yellow-400 font-medium">Coin Attachment Mode</span>
+                </div>
+                <p className="text-gray-300 text-sm">
+                  {coinAttachmentMode === 'different' 
+                    ? 'Participants can attach different amounts of t coins. Rewards will be distributed proportionally based on attachment amounts.'
+                    : 'All participants must attach the same amount of t coins. Rewards will be distributed equally among winners.'
+                  }
+                </p>
               </div>
 
               <button

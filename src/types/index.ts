@@ -32,12 +32,14 @@ export interface Message {
   reviewer?: string;
   isTimerExpired: boolean;
   isLikeDislikeTimerExpired: boolean;
+  coinAttachmentMode: 'same' | 'different'; // New: coin attachment mode
   gameResult?: {
     distributionType: 'unanimous_likes' | 'reviewer_decision';
     winners: string[];
     losers: string[];
     coinsDistributed: { [username: string]: number };
     coinsReturned: { [username: string]: number };
+    reviewerBonus?: number; // New: reviewer bonus from penalty coins
   };
 }
 

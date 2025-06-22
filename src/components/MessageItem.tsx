@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, ThumbsUp, ThumbsDown, Coins, Timer, AlertCircle, Crown, Gavel } from 'lucide-react';
+import { Clock, ThumbsUp, ThumbsDown, Coins, Timer, AlertCircle, Crown, Gavel, Settings, Lock } from 'lucide-react';
 import { StorageUtils } from '../utils/storage';
 import { Message } from '../types';
 
@@ -89,6 +89,91 @@ export const MessageItem: React.FC<MessageItemProps> = ({
     return (allLikedSameLetters && allParticipated) || (!isLikeDislikeTimerActive && allParticipated);
   };
 
+  // Calculate proportional distribution based on attachment amounts
+  const calculateProportionalDistribution = (
+    winners: string[], 
+    losers: string[], 
+    attachedCoins: { [username: string]: number },
+    coinAttachmentMode: 'same' | 'different'
+  ) => {
+    const coinsDistributed: { [username: string]: number } = {};
+    const coinsReturned: { [username: string]: number } = {};
+    let reviewerBonus = 0;
+
+    if (coinAttachmentMode === 'same') {
+      // Equal distribution for same mode
+      losers.forEach(loser => {
+        const attachedAmount = attachedCoins[loser];
+        let amountToDistribute = attachedAmount;
+        
+        // Apply penalty (1 coin goes to reviewer if reviewer exists and has different letters)
+        if (message.reviewer && message.twoLetters[message.reviewer] && 
+            message.twoLetters[loser] !== message.twoLetters[message.reviewer]) {
+          amountToDistribute = Math.max(0, attachedAmount - 1);
+          reviewerBonus += 1;
+        }
+        
+        if (winners.length > 0) {
+          const coinsPerWinner = Math.floor(amountToDistribute / winners.length);
+          const remainder = amountToDistribute % winners.length;
+          
+          winners.forEach((winner, index) => {
+            const bonus = coinsPerWinner + (index === 0 ? remainder : 0);
+            coinsDistributed[winner] = (coinsDistributed[winner] || 0) + bonus;
+          });
+        }
+        
+        // Return remaining coins to original user
+        const returnAmount = attachedAmount - amountToDistribute - (reviewerBonus > 0 ? 1 : 0);
+        if (returnAmount > 0) {
+          coinsReturned[loser] = returnAmount;
+        }
+      });
+      
+      // Winners keep their coins
+      winners.forEach(winner => {
+        coinsReturned[winner] = attachedCoins[winner];
+      });
+    } else {
+      // Proportional distribution for different mode
+      const totalWinnerAttachment = winners.reduce((sum, winner) => sum + attachedCoins[winner], 0);
+      
+      losers.forEach(loser => {
+        const attachedAmount = attachedCoins[loser];
+        let amountToDistribute = attachedAmount;
+        
+        // Apply penalty (1 coin goes to reviewer if reviewer exists and has different letters)
+        if (message.reviewer && message.twoLetters[message.reviewer] && 
+            message.twoLetters[loser] !== message.twoLetters[message.reviewer]) {
+          amountToDistribute = Math.max(0, attachedAmount - 1);
+          reviewerBonus += 1;
+        }
+        
+        if (winners.length > 0 && totalWinnerAttachment > 0) {
+          // Distribute proportionally based on winner attachments
+          winners.forEach(winner => {
+            const winnerProportion = attachedCoins[winner] / totalWinnerAttachment;
+            const bonus = Math.floor(amountToDistribute * winnerProportion);
+            coinsDistributed[winner] = (coinsDistributed[winner] || 0) + bonus;
+          });
+        }
+        
+        // Return remaining coins to original user
+        const returnAmount = attachedAmount - amountToDistribute - (reviewerBonus > 0 ? 1 : 0);
+        if (returnAmount > 0) {
+          coinsReturned[loser] = returnAmount;
+        }
+      });
+      
+      // Winners keep their coins
+      winners.forEach(winner => {
+        coinsReturned[winner] = attachedCoins[winner];
+      });
+    }
+
+    return { coinsDistributed, coinsReturned, reviewerBonus };
+  };
+
   const handleReviewerForceReview = () => {
     // Check if automatic distribution is possible
     if (canAutoDistribute(message)) {
@@ -117,39 +202,9 @@ export const MessageItem: React.FC<MessageItemProps> = ({
     }
 
     // Calculate coin distribution
-    const coinsDistributed: { [username: string]: number } = {};
-    const coinsReturned: { [username: string]: number } = {};
-    
-    attachedUsers.forEach(user => {
-      const attachedAmount = updatedMessage.attachedCoins[user];
-      let amountToDistribute = attachedAmount;
-      
-      // Apply penalty for users who liked but are losers in reviewer decision
-      const usersWhoLiked = updatedMessage.likes.filter(u => attachedUsers.includes(u));
-      if (usersWhoLiked.includes(user) && losers.includes(user)) {
-        amountToDistribute = Math.max(0, attachedAmount - 1); // 1 coin penalty from attached coins
-      }
-      
-      if (winners.length > 0 && losers.includes(user)) {
-        // User loses coins - distribute to winners
-        const coinsPerWinner = Math.floor(amountToDistribute / winners.length);
-        const remainder = amountToDistribute % winners.length;
-        
-        winners.forEach((winner, index) => {
-          const bonus = coinsPerWinner + (index === 0 ? remainder : 0);
-          coinsDistributed[winner] = (coinsDistributed[winner] || 0) + bonus;
-        });
-        
-        // Return remaining coins to original user
-        const returnAmount = attachedAmount - amountToDistribute;
-        if (returnAmount > 0) {
-          coinsReturned[user] = returnAmount;
-        }
-      } else {
-        // User keeps their coins (winner or no distribution)
-        coinsReturned[user] = attachedAmount;
-      }
-    });
+    const { coinsDistributed, coinsReturned, reviewerBonus } = calculateProportionalDistribution(
+      winners, losers, updatedMessage.attachedCoins, updatedMessage.coinAttachmentMode
+    );
 
     // Update user balances
     Object.entries(coinsDistributed).forEach(([user, amount]) => {
@@ -166,13 +221,22 @@ export const MessageItem: React.FC<MessageItemProps> = ({
       }
     });
 
+    // Give reviewer bonus
+    if (reviewerBonus > 0 && updatedMessage.reviewer) {
+      const reviewerData = StorageUtils.getUserByUsername(updatedMessage.reviewer);
+      if (reviewerData) {
+        StorageUtils.updateUserBalance(updatedMessage.reviewer, reviewerData.balance + reviewerBonus);
+      }
+    }
+
     // Save game result
     updatedMessage.gameResult = {
       distributionType: 'reviewer_decision',
       winners,
       losers,
       coinsDistributed,
-      coinsReturned
+      coinsReturned,
+      reviewerBonus
     };
     updatedMessage.isTimerExpired = true;
     updatedMessage.isLikeDislikeTimerExpired = true;
@@ -237,40 +301,9 @@ export const MessageItem: React.FC<MessageItemProps> = ({
     }
 
     // Calculate coin distribution
-    const coinsDistributed: { [username: string]: number } = {};
-    const coinsReturned: { [username: string]: number } = {};
-    
-    attachedUsers.forEach(user => {
-      const attachedAmount = updatedMessage.attachedCoins[user];
-      let amountToDistribute = attachedAmount;
-      
-      // Apply penalty for reviewer decision mode
-      if (distributionType === 'reviewer_decision' && 
-          usersWhoLiked.includes(user) && 
-          losers.includes(user)) {
-        amountToDistribute = Math.max(0, attachedAmount - 1); // 1 coin penalty from attached coins
-      }
-      
-      if (winners.length > 0 && losers.includes(user)) {
-        // User loses coins - distribute to winners
-        const coinsPerWinner = Math.floor(amountToDistribute / winners.length);
-        const remainder = amountToDistribute % winners.length;
-        
-        winners.forEach((winner, index) => {
-          const bonus = coinsPerWinner + (index === 0 ? remainder : 0);
-          coinsDistributed[winner] = (coinsDistributed[winner] || 0) + bonus;
-        });
-        
-        // Return remaining coins to original user
-        const returnAmount = attachedAmount - amountToDistribute;
-        if (returnAmount > 0) {
-          coinsReturned[user] = returnAmount;
-        }
-      } else {
-        // User keeps their coins (winner or no distribution)
-        coinsReturned[user] = attachedAmount;
-      }
-    });
+    const { coinsDistributed, coinsReturned, reviewerBonus } = calculateProportionalDistribution(
+      winners, losers, updatedMessage.attachedCoins, updatedMessage.coinAttachmentMode
+    );
 
     // Update user balances
     Object.entries(coinsDistributed).forEach(([user, amount]) => {
@@ -287,13 +320,22 @@ export const MessageItem: React.FC<MessageItemProps> = ({
       }
     });
 
+    // Give reviewer bonus
+    if (reviewerBonus > 0 && updatedMessage.reviewer) {
+      const reviewerData = StorageUtils.getUserByUsername(updatedMessage.reviewer);
+      if (reviewerData) {
+        StorageUtils.updateUserBalance(updatedMessage.reviewer, reviewerData.balance + reviewerBonus);
+      }
+    }
+
     // Save game result
     updatedMessage.gameResult = {
       distributionType,
       winners,
       losers,
       coinsDistributed,
-      coinsReturned
+      coinsReturned,
+      reviewerBonus
     };
     updatedMessage.isTimerExpired = true;
     updatedMessage.isLikeDislikeTimerExpired = true;
@@ -319,6 +361,21 @@ export const MessageItem: React.FC<MessageItemProps> = ({
       return;
     }
 
+    // Reviewer cannot attach coins during like/dislike timer period
+    if (message.reviewer === currentUser && isLikeDislikeTimerActive) {
+      alert('As reviewer, you cannot attach coins during the like/dislike timer period!');
+      return;
+    }
+
+    // Check coin attachment mode restrictions
+    if (message.coinAttachmentMode === 'same') {
+      const existingAttachments = Object.values(message.attachedCoins);
+      if (existingAttachments.length > 0 && existingAttachments[0] !== amount) {
+        alert(`This message requires all participants to attach the same amount: ${existingAttachments[0]} t coins`);
+        return;
+      }
+    }
+
     const updatedMessage = { ...message };
     const currentAttached = updatedMessage.attachedCoins[currentUser] || 0;
     updatedMessage.attachedCoins[currentUser] = currentAttached + amount;
@@ -340,6 +397,12 @@ export const MessageItem: React.FC<MessageItemProps> = ({
     // Check if main timer is active - no one can set letters after it expires
     if (!isMainTimerActive) {
       alert('Main timer has expired! No one can set letters anymore.');
+      return;
+    }
+
+    // Non-reviewers cannot change letters during like/dislike timer period
+    if (message.reviewer !== currentUser && isLikeDislikeTimerActive) {
+      alert('You cannot change letters during the like/dislike timer period (only reviewer can)!');
       return;
     }
 
@@ -405,6 +468,12 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   const allLikedUsersSameLetters = calculateAllLikedUsersSameLetters(message);
   const allParticipated = allAttachedUsersParticipated(message);
 
+  // Check if reviewer can attach coins (not during like/dislike timer)
+  const reviewerCanAttachCoins = !isReviewer || !isLikeDislikeTimerActive;
+
+  // Check if user can set letters (reviewer always can, others only when like timer is not active)
+  const canSetLetters = isReviewer || !isLikeDislikeTimerActive;
+
   return (
     <div className={`p-4 rounded-lg border-2 transition-all ${
       isOwnMessage 
@@ -437,6 +506,23 @@ export const MessageItem: React.FC<MessageItemProps> = ({
       {/* Message Content */}
       <p className="text-white mb-4 bg-gray-800 p-3 rounded-lg">{message.content}</p>
 
+      {/* Coin Attachment Mode Display */}
+      <div className="mb-4 bg-gray-800 p-3 rounded-lg">
+        <div className="flex items-center space-x-2 mb-2">
+          <Settings className="w-4 h-4 text-yellow-400" />
+          <span className="text-yellow-400 font-medium">Game Settings</span>
+        </div>
+        <div className="text-gray-300 text-sm">
+          <p><strong>Coin Mode:</strong> {message.coinAttachmentMode === 'same' ? 'Same Amount Only' : 'Different Amounts Allowed'}</p>
+          <p className="text-xs text-gray-400 mt-1">
+            {message.coinAttachmentMode === 'same' 
+              ? 'All participants must attach the same amount. Rewards distributed equally.'
+              : 'Participants can attach different amounts. Rewards distributed proportionally.'
+            }
+          </p>
+        </div>
+      </div>
+
       {/* Dual Timer Display */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         {/* Main Timer */}
@@ -468,7 +554,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
               }`}>
                 Like Timer: {isLikeDislikeTimerActive ? `${likeDislikeTimeLeft}m left` : 'EXPIRED'}
               </div>
-              <div className="text-gray-400 text-xs">Like/dislike actions</div>
+              <div className="text-gray-400 text-xs">Like/dislike & letter restrictions</div>
             </div>
           </div>
           
@@ -496,11 +582,11 @@ export const MessageItem: React.FC<MessageItemProps> = ({
             className="px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white text-sm w-24"
             min="0"
             step="0.01"
-            disabled={!isMainTimerActive}
+            disabled={!isMainTimerActive || !reviewerCanAttachCoins}
           />
           <button
             onClick={attachCoins}
-            disabled={!attachAmount || !isMainTimerActive}
+            disabled={!attachAmount || !isMainTimerActive || !reviewerCanAttachCoins}
             className="bg-yellow-400 text-gray-900 px-4 py-2 rounded font-medium hover:bg-yellow-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
           >
             <Coins className="w-4 h-4" />
@@ -508,6 +594,12 @@ export const MessageItem: React.FC<MessageItemProps> = ({
           </button>
           {!isMainTimerActive && (
             <span className="text-red-400 text-sm">Main timer expired</span>
+          )}
+          {isReviewer && isLikeDislikeTimerActive && (
+            <div className="flex items-center space-x-1 text-orange-400 text-sm">
+              <Lock className="w-4 h-4" />
+              <span>Reviewer cannot attach during like timer</span>
+            </div>
           )}
         </div>
 
@@ -520,15 +612,21 @@ export const MessageItem: React.FC<MessageItemProps> = ({
             placeholder="AB"
             className="px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white text-sm w-20 text-center font-bold"
             maxLength={2}
-            disabled={!isMainTimerActive}
+            disabled={!isMainTimerActive || !canSetLetters}
           />
           <button
             onClick={setLetters}
-            disabled={twoLetters.length !== 2 || !isMainTimerActive}
+            disabled={twoLetters.length !== 2 || !isMainTimerActive || !canSetLetters}
             className="bg-blue-500 text-white px-4 py-2 rounded font-medium hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Set Letters
           </button>
+          {!canSetLetters && !isReviewer && isLikeDislikeTimerActive && (
+            <div className="flex items-center space-x-1 text-orange-400 text-sm">
+              <Lock className="w-4 h-4" />
+              <span>Letters locked during like timer</span>
+            </div>
+          )}
         </div>
 
         {/* Like/Dislike Buttons */}
@@ -585,6 +683,11 @@ export const MessageItem: React.FC<MessageItemProps> = ({
           {!isLikeDislikeTimerActive && (
             <div className="text-green-400">
               ✓ Like/dislike available for all users
+            </div>
+          )}
+          {isLikeDislikeTimerActive && (
+            <div className="text-blue-400">
+              ⏱ Like timer active - non-reviewers cannot change letters
             </div>
           )}
           {allLikedUsersSameLetters && allParticipated && Object.keys(message.attachedCoins).length > 0 && (
@@ -671,6 +774,10 @@ export const MessageItem: React.FC<MessageItemProps> = ({
                 }
               </p>
               
+              <p className="text-gray-300 text-xs mb-2">
+                <strong>Distribution Mode:</strong> {message.coinAttachmentMode === 'same' ? 'Equal Distribution' : 'Proportional Distribution'}
+              </p>
+              
               {message.gameResult.winners.length > 0 && (
                 <div className="text-green-400 text-sm">
                   <strong>Winners:</strong> {message.gameResult.winners.join(', ')}
@@ -700,6 +807,13 @@ export const MessageItem: React.FC<MessageItemProps> = ({
                       .map(([user, amount]) => `${user}: +${amount}t`)
                       .join(', ')
                   }
+                </div>
+              )}
+
+              {message.gameResult.reviewerBonus && message.gameResult.reviewerBonus > 0 && (
+                <div className="text-purple-400 text-sm mt-1 flex items-center space-x-1">
+                  <Crown className="w-3 h-3" />
+                  <span><strong>Reviewer Bonus:</strong> {message.reviewer}: +{message.gameResult.reviewerBonus}t (penalty coins)</span>
                 </div>
               )}
             </div>
