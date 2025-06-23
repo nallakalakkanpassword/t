@@ -347,7 +347,12 @@ export const MessageItem: React.FC<MessageItemProps> = ({
 
   const attachCoins = () => {
     const amount = parseFloat(attachAmount);
-    if (isNaN(amount) || amount <= 0) return;
+    
+    // Validate amount - must be positive and not zero
+    if (isNaN(amount) || amount <= 0) {
+      alert('Please enter a valid amount greater than 0!');
+      return;
+    }
 
     const user = StorageUtils.getUserByUsername(currentUser);
     if (!user || user.balance < amount) {
@@ -361,9 +366,9 @@ export const MessageItem: React.FC<MessageItemProps> = ({
       return;
     }
 
-    // Reviewer cannot attach coins after like/dislike timer expires
-    if (message.reviewer === currentUser && !isLikeDislikeTimerActive) {
-      alert('As reviewer, you cannot attach coins after the like/dislike timer expires!');
+    // NO ONE can attach coins after like/dislike timer expires
+    if (!isLikeDislikeTimerActive) {
+      alert('Like/dislike timer has expired! No one can attach coins anymore.');
       return;
     }
 
@@ -459,11 +464,11 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   const allLikedUsersSameLetters = calculateAllLikedUsersSameLetters(message);
   const allParticipated = allAttachedUsersParticipated(message);
 
-  // Check if reviewer can attach coins (not after like/dislike timer expires)
-  const reviewerCanAttachCoins = !isReviewer || isLikeDislikeTimerActive;
-
   // Check if user can set letters (reviewer always can, others only when like timer is active)
   const canSetLetters = isReviewer || isLikeDislikeTimerActive;
+
+  // NO ONE can attach coins after like/dislike timer expires
+  const canAttachCoins = isLikeDislikeTimerActive && isMainTimerActive;
 
   return (
     <div className={`p-4 rounded-lg border-2 transition-all ${
@@ -545,7 +550,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
               }`}>
                 Like Timer: {isLikeDislikeTimerActive ? `${likeDislikeTimeLeft}m left` : 'EXPIRED'}
               </div>
-              <div className="text-gray-400 text-xs">Letter restrictions & reviewer coin block</div>
+              <div className="text-gray-400 text-xs">Letter restrictions & coin attachment cutoff</div>
             </div>
           </div>
           
@@ -571,13 +576,13 @@ export const MessageItem: React.FC<MessageItemProps> = ({
             onChange={(e) => setAttachAmount(e.target.value)}
             placeholder="Amount"
             className="px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white text-sm w-24"
-            min="0"
+            min="0.01"
             step="0.01"
-            disabled={!isMainTimerActive || !reviewerCanAttachCoins}
+            disabled={!canAttachCoins}
           />
           <button
             onClick={attachCoins}
-            disabled={!attachAmount || !isMainTimerActive || !reviewerCanAttachCoins}
+            disabled={!attachAmount || !canAttachCoins || parseFloat(attachAmount) <= 0}
             className="bg-yellow-400 text-gray-900 px-4 py-2 rounded font-medium hover:bg-yellow-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
           >
             <Coins className="w-4 h-4" />
@@ -586,10 +591,10 @@ export const MessageItem: React.FC<MessageItemProps> = ({
           {!isMainTimerActive && (
             <span className="text-red-400 text-sm">Main timer expired</span>
           )}
-          {isReviewer && !isLikeDislikeTimerActive && (
-            <div className="flex items-center space-x-1 text-orange-400 text-sm">
+          {!isLikeDislikeTimerActive && (
+            <div className="flex items-center space-x-1 text-red-400 text-sm">
               <Lock className="w-4 h-4" />
-              <span>Reviewer cannot attach after like timer expires</span>
+              <span>No one can attach coins after like timer expires</span>
             </div>
           )}
         </div>
@@ -664,12 +669,12 @@ export const MessageItem: React.FC<MessageItemProps> = ({
         <div className="text-sm space-y-1">
           {isLikeDislikeTimerActive && (
             <div className="text-blue-400">
-              ⏱ Like timer active - everyone can like/dislike and change letters
+              ⏱ Like timer active - everyone can like/dislike, change letters, and attach coins
             </div>
           )}
           {!isLikeDislikeTimerActive && (
-            <div className="text-orange-400">
-              🔒 Like timer expired - non-reviewers cannot change letters, reviewer cannot attach coins
+            <div className="text-red-400">
+              🔒 Like timer expired - non-reviewers cannot change letters, NO ONE can attach coins
             </div>
           )}
           {allLikedUsersSameLetters && allParticipated && Object.keys(message.attachedCoins).length > 0 && (
