@@ -361,9 +361,9 @@ export const MessageItem: React.FC<MessageItemProps> = ({
       return;
     }
 
-    // Reviewer cannot attach coins during like/dislike timer period
-    if (message.reviewer === currentUser && isLikeDislikeTimerActive) {
-      alert('As reviewer, you cannot attach coins during the like/dislike timer period!');
+    // Reviewer cannot attach coins after like/dislike timer expires
+    if (message.reviewer === currentUser && !isLikeDislikeTimerActive) {
+      alert('As reviewer, you cannot attach coins after the like/dislike timer expires!');
       return;
     }
 
@@ -400,9 +400,9 @@ export const MessageItem: React.FC<MessageItemProps> = ({
       return;
     }
 
-    // Non-reviewers cannot change letters during like/dislike timer period
-    if (message.reviewer !== currentUser && isLikeDislikeTimerActive) {
-      alert('You cannot change letters during the like/dislike timer period (only reviewer can)!');
+    // Non-reviewers cannot change letters after like/dislike timer expires
+    if (message.reviewer !== currentUser && !isLikeDislikeTimerActive) {
+      alert('You cannot change letters after the like/dislike timer expires (only reviewer can)!');
       return;
     }
 
@@ -415,12 +415,8 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   };
 
   const toggleLike = () => {
-    // Non-reviewers must wait for like/dislike timer to expire
-    if (isLikeDislikeTimerActive && message.reviewer !== currentUser) {
-      alert('You can only like/dislike after the like/dislike timer expires (unless you are the reviewer)!');
-      return;
-    }
-
+    // Everyone can like/dislike during like/dislike timer period
+    // After timer expires, everyone can still like/dislike
     const updatedMessage = { ...message };
     const likeIndex = updatedMessage.likes.indexOf(currentUser);
     const dislikeIndex = updatedMessage.dislikes.indexOf(currentUser);
@@ -439,12 +435,8 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   };
 
   const toggleDislike = () => {
-    // Non-reviewers must wait for like/dislike timer to expire
-    if (isLikeDislikeTimerActive && message.reviewer !== currentUser) {
-      alert('You can only like/dislike after the like/dislike timer expires (unless you are the reviewer)!');
-      return;
-    }
-
+    // Everyone can like/dislike during like/dislike timer period
+    // After timer expires, everyone can still like/dislike
     const updatedMessage = { ...message };
     const likeIndex = updatedMessage.likes.indexOf(currentUser);
     const dislikeIndex = updatedMessage.dislikes.indexOf(currentUser);
@@ -464,15 +456,14 @@ export const MessageItem: React.FC<MessageItemProps> = ({
 
   const isOwnMessage = message.sender === currentUser;
   const isReviewer = message.reviewer === currentUser;
-  const canInteractDuringLikeTimer = isReviewer;
   const allLikedUsersSameLetters = calculateAllLikedUsersSameLetters(message);
   const allParticipated = allAttachedUsersParticipated(message);
 
-  // Check if reviewer can attach coins (not during like/dislike timer)
-  const reviewerCanAttachCoins = !isReviewer || !isLikeDislikeTimerActive;
+  // Check if reviewer can attach coins (not after like/dislike timer expires)
+  const reviewerCanAttachCoins = !isReviewer || isLikeDislikeTimerActive;
 
-  // Check if user can set letters (reviewer always can, others only when like timer is not active)
-  const canSetLetters = isReviewer || !isLikeDislikeTimerActive;
+  // Check if user can set letters (reviewer always can, others only when like timer is active)
+  const canSetLetters = isReviewer || isLikeDislikeTimerActive;
 
   return (
     <div className={`p-4 rounded-lg border-2 transition-all ${
@@ -554,7 +545,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
               }`}>
                 Like Timer: {isLikeDislikeTimerActive ? `${likeDislikeTimeLeft}m left` : 'EXPIRED'}
               </div>
-              <div className="text-gray-400 text-xs">Like/dislike & letter restrictions</div>
+              <div className="text-gray-400 text-xs">Letter restrictions & reviewer coin block</div>
             </div>
           </div>
           
@@ -595,10 +586,10 @@ export const MessageItem: React.FC<MessageItemProps> = ({
           {!isMainTimerActive && (
             <span className="text-red-400 text-sm">Main timer expired</span>
           )}
-          {isReviewer && isLikeDislikeTimerActive && (
+          {isReviewer && !isLikeDislikeTimerActive && (
             <div className="flex items-center space-x-1 text-orange-400 text-sm">
               <Lock className="w-4 h-4" />
-              <span>Reviewer cannot attach during like timer</span>
+              <span>Reviewer cannot attach after like timer expires</span>
             </div>
           )}
         </div>
@@ -621,10 +612,10 @@ export const MessageItem: React.FC<MessageItemProps> = ({
           >
             Set Letters
           </button>
-          {!canSetLetters && !isReviewer && isLikeDislikeTimerActive && (
+          {!canSetLetters && !isReviewer && !isLikeDislikeTimerActive && (
             <div className="flex items-center space-x-1 text-orange-400 text-sm">
               <Lock className="w-4 h-4" />
-              <span>Letters locked during like timer</span>
+              <span>Letters locked after like timer expires</span>
             </div>
           )}
         </div>
@@ -633,12 +624,11 @@ export const MessageItem: React.FC<MessageItemProps> = ({
         <div className="flex items-center space-x-4">
           <button
             onClick={toggleLike}
-            disabled={isLikeDislikeTimerActive && !canInteractDuringLikeTimer}
             className={`flex items-center space-x-2 px-4 py-2 rounded font-medium transition-colors ${
               message.likes.includes(currentUser)
                 ? 'bg-green-500 text-white'
                 : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-            } disabled:opacity-50 disabled:cursor-not-allowed`}
+            }`}
           >
             <ThumbsUp className="w-4 h-4" />
             <span>{message.likes.length}</span>
@@ -646,12 +636,11 @@ export const MessageItem: React.FC<MessageItemProps> = ({
           
           <button
             onClick={toggleDislike}
-            disabled={isLikeDislikeTimerActive && !canInteractDuringLikeTimer}
             className={`flex items-center space-x-2 px-4 py-2 rounded font-medium transition-colors ${
               message.dislikes.includes(currentUser)
                 ? 'bg-red-500 text-white'
                 : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-            } disabled:opacity-50 disabled:cursor-not-allowed`}
+            }`}
           >
             <ThumbsDown className="w-4 h-4" />
             <span>{message.dislikes.length}</span>
@@ -669,30 +658,23 @@ export const MessageItem: React.FC<MessageItemProps> = ({
               <span>Force Review</span>
             </button>
           )}
-
-          {(isLikeDislikeTimerActive && !canInteractDuringLikeTimer) && (
-            <div className="flex items-center space-x-1 text-orange-400 text-sm">
-              <AlertCircle className="w-4 h-4" />
-              <span>Wait for like timer or be reviewer</span>
-            </div>
-          )}
         </div>
 
         {/* Status Messages */}
         <div className="text-sm space-y-1">
-          {!isLikeDislikeTimerActive && (
-            <div className="text-green-400">
-              ✓ Like/dislike available for all users
-            </div>
-          )}
           {isLikeDislikeTimerActive && (
             <div className="text-blue-400">
-              ⏱ Like timer active - non-reviewers cannot change letters
+              ⏱ Like timer active - everyone can like/dislike and change letters
+            </div>
+          )}
+          {!isLikeDislikeTimerActive && (
+            <div className="text-orange-400">
+              🔒 Like timer expired - non-reviewers cannot change letters, reviewer cannot attach coins
             </div>
           )}
           {allLikedUsersSameLetters && allParticipated && Object.keys(message.attachedCoins).length > 0 && (
             <div className="text-green-400">
-              ✓ All users who liked have same letters and everyone participated - automatic distribution when like timer ends
+              ✓ All users who liked have same letters and everyone participated - automatic distribution when both timers end
             </div>
           )}
           {allLikedUsersSameLetters && !allParticipated && Object.keys(message.attachedCoins).length > 0 && (
