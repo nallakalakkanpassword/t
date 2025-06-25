@@ -13,6 +13,23 @@ export interface Transaction {
   type: 'send' | 'receive';
 }
 
+export interface ReviewerAction {
+  username: string;
+  letters?: string;
+  liked: boolean;
+  disliked: boolean;
+  hasActed: boolean;
+  actionTimestamp?: string;
+}
+
+export interface ReviewerTimer {
+  reviewerIndex: number;
+  startTime: string;
+  duration: number; // in minutes
+  isActive: boolean;
+  isExpired: boolean;
+}
+
 export interface Message {
   id: string;
   sender: string;
@@ -29,17 +46,23 @@ export interface Message {
   likeDislikeTimer: number; // in minutes - like/dislike timer
   likeDislikeTimerStarted: string;
   percentage?: number;
-  reviewer?: string;
+  reviewers: string[]; // Multiple reviewers (up to 10)
+  reviewerActions: { [username: string]: ReviewerAction }; // Track reviewer actions
+  reviewerTimer?: number; // Timer between reviewer phases (mandatory if multiple reviewers)
+  currentReviewerIndex: number; // Which reviewer is currently active (0-based)
+  reviewerTimers: ReviewerTimer[]; // Track each reviewer's timer
   isTimerExpired: boolean;
   isLikeDislikeTimerExpired: boolean;
-  coinAttachmentMode: 'same' | 'different'; // New: coin attachment mode
+  coinAttachmentMode: 'same' | 'different';
   gameResult?: {
     distributionType: 'unanimous_likes' | 'reviewer_decision';
+    reviewerIndex?: number; // Which reviewer made the final decision
     winners: string[];
     losers: string[];
     coinsDistributed: { [username: string]: number };
     coinsReturned: { [username: string]: number };
-    reviewerBonus?: number; // New: reviewer bonus from penalty coins
+    reviewerBonus?: number;
+    penaltyCoinsDistributed?: { [username: string]: number }; // Extra penalty coins from different letters
   };
 }
 

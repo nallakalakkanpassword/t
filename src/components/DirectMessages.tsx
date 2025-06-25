@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Send, Users, MessageCircle, Settings } from 'lucide-react';
+import { Send, Users, MessageCircle, Settings, Plus, Minus } from 'lucide-react';
 import { StorageUtils } from '../utils/storage';
 import { Message, User } from '../types';
 import { MessageItem } from './MessageItem';
@@ -15,7 +15,8 @@ export const DirectMessages: React.FC<DirectMessagesProps> = ({ username, onBala
   const [timer, setTimer] = useState(5);
   const [likeDislikeTimer, setLikeDislikeTimer] = useState(3);
   const [percentage, setPercentage] = useState('');
-  const [reviewer, setReviewer] = useState('');
+  const [reviewers, setReviewers] = useState<string[]>(['']);
+  const [reviewerTimer, setReviewerTimer] = useState(5);
   const [coinAttachmentMode, setCoinAttachmentMode] = useState<'same' | 'different'>('different');
   const [messages, setMessages] = useState<Message[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -33,8 +34,54 @@ export const DirectMessages: React.FC<DirectMessagesProps> = ({ username, onBala
     setMessages(userMessages);
   };
 
+  const addReviewer = () => {
+    if (reviewers.length < 10) {
+      setReviewers([...reviewers, '']);
+    }
+  };
+
+  const removeReviewer = (index: number) => {
+    if (reviewers.length > 1) {
+      const newReviewers = reviewers.filter((_, i) => i !== index);
+      setReviewers(newReviewers);
+    }
+  };
+
+  const updateReviewer = (index: number, value: string) => {
+    const newReviewers = [...reviewers];
+    newReviewers[index] = value;
+    setReviewers(newReviewers);
+  };
+
+  const getAvailableReviewers = (currentIndex: number) => {
+    const selectedReviewers = reviewers.filter((r, i) => r && i !== currentIndex);
+    return [selectedUser, ...users.map(u => u.username)].filter(u => 
+      u && u !== username && !selectedReviewers.includes(u)
+    );
+  };
+
   const sendMessage = () => {
     if (!messageContent.trim() || !selectedUser) return;
+
+    // Validate reviewers
+    const validReviewers = reviewers.filter(r => r.trim());
+    if (validReviewers.length === 0) {
+      alert('Please select at least one reviewer');
+      return;
+    }
+
+    // Check for duplicate reviewers
+    const uniqueReviewers = [...new Set(validReviewers)];
+    if (uniqueReviewers.length !== validReviewers.length) {
+      alert('Please remove duplicate reviewers');
+      return;
+    }
+
+    // Validate reviewer timer for multiple reviewers
+    if (validReviewers.length > 1 && (!reviewerTimer || reviewerTimer <= 0)) {
+      alert('Reviewer timer is mandatory when selecting multiple reviewers');
+      return;
+    }
 
     const now = new Date().toISOString();
     const message: Message = {
@@ -52,16 +99,30 @@ export const DirectMessages: React.FC<DirectMessagesProps> = ({ username, onBala
       likeDislikeTimer: likeDislikeTimer,
       likeDislikeTimerStarted: now,
       percentage: percentage ? parseFloat(percentage) : undefined,
-      reviewer: reviewer || undefined,
+      reviewers: validReviewers,
+      reviewerActions: {},
+      reviewerTimer: validReviewers.length > 1 ? reviewerTimer : undefined,
+      currentReviewerIndex: 0,
+      reviewerTimers: [],
       isTimerExpired: false,
       isLikeDislikeTimerExpired: false,
       coinAttachmentMode: coinAttachmentMode
     };
 
+    // Initialize reviewer actions
+    validReviewers.forEach(reviewer => {
+      message.reviewerActions[reviewer] = {
+        username: reviewer,
+        liked: false,
+        disliked: false,
+        hasActed: false
+      };
+    });
+
     StorageUtils.saveMessage(message);
     setMessageContent('');
     setPercentage('');
-    setReviewer('');
+    setReviewers(['']);
     refreshMessages();
   };
 
@@ -115,7 +176,7 @@ export const DirectMessages: React.FC<DirectMessagesProps> = ({ username, onBala
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
               <label className="block text-gray-300 text-sm font-medium mb-2">
                 Main Timer (minutes)
@@ -161,21 +222,6 @@ export const DirectMessages: React.FC<DirectMessagesProps> = ({ username, onBala
 
             <div>
               <label className="block text-gray-300 text-sm font-medium mb-2">
-                Reviewer (optional)
-              </label>
-              <select
-                value={reviewer}
-                onChange={(e) => setReviewer(e.target.value)}
-                className="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-400"
-              >
-                <option value="">No reviewer</option>
-                {selectedUser && <option value={selectedUser}>{selectedUser}</option>}
-                <option value={username}>{username} (you)</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-gray-300 text-sm font-medium mb-2">
                 Coin Attachment Mode
               </label>
               <select
@@ -189,23 +235,108 @@ export const DirectMessages: React.FC<DirectMessagesProps> = ({ username, onBala
             </div>
           </div>
 
+          {/* Multiple Reviewers Section */}
+          <div className="bg-gray-600 p-4 rounded-lg">
+            <div className="flex items-center justify-between mb-3">
+              <label className="block text-gray-300 text-sm font-medium">
+                Reviewers (1-10)
+              </label>
+              <div className="flex space-x-2">
+                <button
+                  onClick={addReviewer}
+                  disabled={reviewers.length >= 10}
+                  className="bg-green-500 text-white px-2 py-1 rounded text-xs hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>Add</span>
+                </button>
+                <button
+                  onClick={() => removeReviewer(reviewers.length - 1)}
+                  disabled={reviewers.length <= 1}
+                  className="bg-red-500 text-white px-2 py-1 rounded text-xs hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1"
+                >
+                  <Minus className="w-3 h-3" />
+                  <span>Remove</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {reviewers.map((reviewer, index) => (
+                <div key={index} className="flex items-center space-x-2">
+                  <span className="text-gray-300 text-sm w-20">
+                    {index === 0 ? 'Primary:' : `${index + 1}${index === 1 ? 'st' : index === 2 ? 'nd' : index === 3 ? 'rd' : 'th'}:`}
+                  </span>
+                  <select
+                    value={reviewer}
+                    onChange={(e) => updateReviewer(index, e.target.value)}
+                    className="flex-1 px-3 py-2 bg-gray-700 border border-gray-500 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                  >
+                    <option value="">Select reviewer...</option>
+                    {getAvailableReviewers(index).map(user => (
+                      <option key={user} value={user}>
+                        {user}
+                      </option>
+                    ))}
+                  </select>
+                  {index > 0 && (
+                    <button
+                      onClick={() => removeReviewer(index)}
+                      className="text-red-400 hover:text-red-300 p-1"
+                    >
+                      <Minus className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Reviewer Timer (mandatory for multiple reviewers) */}
+            {reviewers.filter(r => r.trim()).length > 1 && (
+              <div className="mt-4">
+                <label className="block text-gray-300 text-sm font-medium mb-2">
+                  Reviewer Timer (minutes) *
+                  <span className="text-yellow-400 text-xs ml-1">Required for multiple reviewers</span>
+                </label>
+                <input
+                  type="number"
+                  value={reviewerTimer}
+                  onChange={(e) => setReviewerTimer(parseInt(e.target.value) || 5)}
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-500 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                  min="1"
+                  max="60"
+                  required
+                />
+                <p className="text-gray-400 text-xs mt-1">
+                  Time between reviewer phases. Starts after each reviewer's decision.
+                </p>
+              </div>
+            )}
+          </div>
+
           {/* Coin Attachment Mode Explanation */}
           <div className="bg-gray-600 p-3 rounded-lg">
             <div className="flex items-center space-x-2 mb-2">
               <Settings className="w-4 h-4 text-yellow-400" />
-              <span className="text-yellow-400 font-medium">Coin Attachment Mode</span>
+              <span className="text-yellow-400 font-medium">Game Settings</span>
             </div>
+            <p className="text-gray-300 text-sm mb-2">
+              <strong>Coin Mode:</strong> {coinAttachmentMode === 'different' 
+                ? 'Participants can attach different amounts. Rewards distributed proportionally.'
+                : 'All participants must attach the same amount. Rewards distributed equally.'
+              }
+            </p>
             <p className="text-gray-300 text-sm">
-              {coinAttachmentMode === 'different' 
-                ? 'Participants can attach different amounts of t coins. Rewards will be distributed proportionally based on attachment amounts.'
-                : 'All participants must attach the same amount of t coins. Rewards will be distributed equally among winners.'
+              <strong>Multi-Reviewer System:</strong> {reviewers.filter(r => r.trim()).length > 1 
+                ? `${reviewers.filter(r => r.trim()).length} reviewers selected. Cascading review process with ${reviewerTimer}min between phases.`
+                : 'Single reviewer system. Standard review process.'
               }
             </p>
           </div>
 
           <button
             onClick={sendMessage}
-            disabled={!messageContent.trim() || !selectedUser}
+            disabled={!messageContent.trim() || !selectedUser || reviewers.filter(r => r.trim()).length === 0}
             className="w-full bg-yellow-400 text-gray-900 py-2 rounded-lg font-medium hover:bg-yellow-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
           >
             <Send className="w-4 h-4" />
