@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Crown, LogIn } from 'lucide-react';
-import { StorageUtils } from '../utils/storage';
+import { DatabaseService } from '../services/database';
 
 interface LoginProps {
   onLogin: (username: string) => void;
@@ -9,8 +9,9 @@ interface LoginProps {
 export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [username, setUsername] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (!username.trim()) {
       setError('Please enter a username');
       return;
@@ -21,19 +22,28 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
       return;
     }
 
-    let user = StorageUtils.getUserByUsername(username);
-    if (!user) {
-      // Create new user with 100 default coins
-      user = {
-        username,
-        balance: 100,
-        createdAt: new Date().toISOString()
-      };
-      StorageUtils.saveUser(user);
-    }
+    setLoading(true);
+    try {
+      await DatabaseService.setCurrentUser(username);
+      let user = await DatabaseService.getUserByUsername(username);
+      
+      if (!user) {
+        // Create new user with 100 default coins
+        user = {
+          username,
+          balance: 100,
+          created_at: new Date().toISOString()
+        };
+        await DatabaseService.saveUser(user);
+      }
 
-    StorageUtils.setCurrentUser(username);
-    onLogin(username);
+      onLogin(username);
+    } catch (error) {
+      console.error('Login error:', error);
+      setError('Failed to login. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -68,6 +78,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
               className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent"
               placeholder="Enter your username"
               onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+              disabled={loading}
             />
           </div>
 
@@ -77,15 +88,19 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
           <button
             onClick={handleLogin}
-            className="w-full bg-gradient-to-r from-yellow-400 to-orange-500 text-white py-3 rounded-lg font-semibold hover:from-yellow-500 hover:to-orange-600 transition-all duration-300 flex items-center justify-center space-x-2"
+            disabled={loading}
+            className="w-full bg-gradient-to-r from-yellow-400 to-orange-500 text-white py-3 rounded-lg font-semibold hover:from-yellow-500 hover:to-orange-600 transition-all duration-300 flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <LogIn className="w-5 h-5" />
-            <span>Login</span>
+            <span>{loading ? 'Logging in...' : 'Login'}</span>
           </button>
         </div>
 
         <div className="mt-6 text-center text-gray-400 text-sm">
           <p>New users get 100 t coins automatically!</p>
+          <p className="mt-2 text-xs">
+            🔒 Powered by Supabase - Secure & Scalable
+          </p>
         </div>
       </div>
     </div>

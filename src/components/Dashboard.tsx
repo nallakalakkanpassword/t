@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Crown, Send, ArrowDownLeft, History, MessageCircle, Users, LogOut, Coins } from 'lucide-react';
-import { StorageUtils } from '../utils/storage';
+import { Crown, Send, ArrowDownLeft, History, MessageCircle, Users, LogOut, Coins, Eye } from 'lucide-react';
+import { DatabaseService } from '../services/database';
 import { User } from '../types';
 import { SendReceive } from './SendReceive';
 import { TransactionHistory } from './TransactionHistory';
 import { Messaging } from './Messaging';
+import { PublicMessages } from './PublicMessages';
 
 interface DashboardProps {
   username: string;
@@ -13,16 +14,20 @@ interface DashboardProps {
 
 export const Dashboard: React.FC<DashboardProps> = ({ username, onLogout }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [activeTab, setActiveTab] = useState<'wallet' | 'history' | 'messages'>('wallet');
+  const [activeTab, setActiveTab] = useState<'wallet' | 'history' | 'messages' | 'public'>('wallet');
 
   useEffect(() => {
-    const userData = StorageUtils.getUserByUsername(username);
-    setUser(userData);
+    loadUser();
   }, [username]);
 
-  const refreshUser = () => {
-    const userData = StorageUtils.getUserByUsername(username);
-    setUser(userData);
+  const loadUser = async () => {
+    try {
+      await DatabaseService.setCurrentUser(username);
+      const userData = await DatabaseService.getUserByUsername(username);
+      setUser(userData);
+    } catch (error) {
+      console.error('Error loading user:', error);
+    }
   };
 
   if (!user) return null;
@@ -30,7 +35,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ username, onLogout }) => {
   const tabs = [
     { id: 'wallet', label: 'Wallet', icon: Coins },
     { id: 'history', label: 'History', icon: History },
-    { id: 'messages', label: 'Messages', icon: MessageCircle }
+    { id: 'messages', label: 'Messages', icon: MessageCircle },
+    { id: 'public', label: 'Public', icon: Eye }
   ];
 
   return (
@@ -93,13 +99,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ username, onLogout }) => {
       {/* Content */}
       <div className="max-w-6xl mx-auto p-4">
         {activeTab === 'wallet' && (
-          <SendReceive username={username} onBalanceUpdate={refreshUser} />
+          <SendReceive username={username} onBalanceUpdate={loadUser} />
         )}
         {activeTab === 'history' && (
           <TransactionHistory username={username} />
         )}
         {activeTab === 'messages' && (
-          <Messaging username={username} onBalanceUpdate={refreshUser} />
+          <Messaging username={username} onBalanceUpdate={loadUser} />
+        )}
+        {activeTab === 'public' && (
+          <PublicMessages username={username} />
         )}
       </div>
     </div>

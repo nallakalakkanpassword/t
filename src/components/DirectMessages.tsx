@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Send, Users, MessageCircle, Settings, Plus, Minus } from 'lucide-react';
-import { StorageUtils } from '../utils/storage';
+import { Send, Users, MessageCircle, Settings, Plus, Minus, Percent, Shield, Eye, Forward } from 'lucide-react';
+import { DatabaseService } from '../services/database';
 import { Message, User } from '../types';
 import { MessageItem } from './MessageItem';
 
@@ -15,23 +15,31 @@ export const DirectMessages: React.FC<DirectMessagesProps> = ({ username, onBala
   const [timer, setTimer] = useState(5);
   const [likeDislikeTimer, setLikeDislikeTimer] = useState(3);
   const [percentage, setPercentage] = useState('');
+  const [userPercentage, setUserPercentage] = useState('');
   const [reviewers, setReviewers] = useState<string[]>(['']);
   const [reviewerTimer, setReviewerTimer] = useState(5);
   const [coinAttachmentMode, setCoinAttachmentMode] = useState<'same' | 'different'>('different');
   const [messages, setMessages] = useState<Message[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [reviewerPermissions, setReviewerPermissions] = useState<{[key: string]: boolean}>({});
 
   useEffect(() => {
-    const allUsers = StorageUtils.getUsers().filter(u => u.username !== username);
-    setUsers(allUsers);
-    refreshMessages();
+    loadData();
   }, [username]);
 
-  const refreshMessages = () => {
-    const userMessages = StorageUtils.getUserMessages(username)
-      .filter(m => !m.groupId)
-      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    setMessages(userMessages);
+  const loadData = async () => {
+    try {
+      await DatabaseService.setCurrentUser(username);
+      const [allUsers, userMessages] = await Promise.all([
+        DatabaseService.getUsers(),
+        DatabaseService.getUserMessages(username)
+      ]);
+      
+      setUsers(allUsers.filter(u => u.username !== username));
+      setMessages(userMessages.filter(m => !m.group_id));
+    } catch (error) {
+      console.error('Error loading data:', error);
+    }
   };
 
   const addReviewer = () => {
@@ -60,7 +68,14 @@ export const DirectMessages: React.FC<DirectMessagesProps> = ({ username, onBala
     );
   };
 
-  const sendMessage = () => {
+  const toggleReviewerPermission = (reviewer: string) => {
+    setReviewerPermissions(prev => ({
+      ...prev,
+      [reviewer]: !prev[reviewer]
+    }));
+  };
+
+  const sendMessage = async () => {
     if (!messageContent.trim() || !selectedUser) return;
 
     // Validate reviewers
@@ -83,47 +98,79 @@ export const DirectMessages: React.FC<DirectMessagesProps> = ({ username, onBala
       return;
     }
 
-    const now = new Date().toISOString();
-    const message: Message = {
-      id: Date.now().toString(),
-      sender: username,
-      recipient: selectedUser,
-      content: messageContent,
-      timestamp: now,
-      attachedCoins: {},
-      twoLetters: {},
-      likes: [],
-      dislikes: [],
-      timer: timer,
-      timerStarted: now,
-      likeDislikeTimer: likeDislikeTimer,
-      likeDislikeTimerStarted: now,
-      percentage: percentage ? parseFloat(percentage) : undefined,
-      reviewers: validReviewers,
-      reviewerActions: {},
-      reviewerTimer: validReviewers.length > 1 ? reviewerTimer : undefined,
-      currentReviewerIndex: 0,
-      reviewerTimers: [],
-      isTimerExpired: false,
-      isLikeDislikeTimerExpired: false,
-      coinAttachmentMode: coinAttachmentMode
-    };
-
-    // Initialize reviewer actions
-    validReviewers.forEach(reviewer => {
-      message.reviewerActions[reviewer] = {
-        username: reviewer,
-        liked: false,
-        disliked: false,
-        hasActed: false
+    try {
+      const now = new Date().toISOString();
+      const message: Message = {
+        sender: username,
+        recipient: selectedUser,
+        content: messageContent,
+        timestamp: now,
+        attached_coins: {},
+        two_letters: {},
+        likes: [],
+        dislikes: [],
+        timer: timer,
+        timer_started: now,
+        like_dislike_timer: likeDislikeTimer,
+        like_dislike_timer_started: now,
+        percentage: percentage ? parseFloat(percentage) : undefined,
+        reviewers: validReviewers,
+        reviewer_actions: {},
+        reviewer_timer: validReviewers.length > 1 ? reviewerTimer : undefined,
+        current_reviewer_index: 0,
+        reviewer_timers: [],
+        is_timer_expired: false,
+        is_like_dislike_timer_expired: false,
+        coin_attachment_mode: coinAttachmentMode,
+        user_percentages: {},
+        reviewer_permissions: {},
+        is_public: false
       };
-    });
 
-    StorageUtils.saveMessage(message);
-    setMessageContent('');
-    setPercentage('');
-    setReviewers(['']);
-    refreshMessages();
+      // Initialize reviewer actions
+      validReviewers.forEach(reviewer => {
+        message.reviewer_actions[reviewer] = {
+          username: reviewer,
+          liked: false,
+          disliked: false,
+          hasActed: false
+        };
+      });
+
+      // Set reviewer permissions
+      validReviewers.forEach(reviewer => {
+        if (reviewerPermissions[reviewer]) {
+          message.reviewer_permissions[reviewer] = {
+            username: reviewer,
+            hasPermission: true,
+            grantedBy: username,
+            grantedAt: now
+          };
+        }
+      });
+
+      // Set user percentage if provided
+      if (userPercentage) {
+        message.user_percentages[username] = {
+          username: username,
+          percentage: parseFloat(userPercentage),
+          liked: false,
+          disliked: false,
+          hasActed: false
+        };
+      }
+
+      await DatabaseService.saveMessage(message);
+      setMessageContent('');
+      setPercentage('');
+      setUserPercentage('');
+      setReviewers(['']);
+      setReviewerPermissions({});
+      await loadData();
+    } catch (error) {
+      console.error('Error sending message:', error);
+      alert('Failed to send message');
+    }
   };
 
   const getConversationPartner = (message: Message): string => {
@@ -176,7 +223,7 @@ export const DirectMessages: React.FC<DirectMessagesProps> = ({ username, onBala
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             <div>
               <label className="block text-gray-300 text-sm font-medium mb-2">
                 Main Timer (minutes)
@@ -207,7 +254,7 @@ export const DirectMessages: React.FC<DirectMessagesProps> = ({ username, onBala
 
             <div>
               <label className="block text-gray-300 text-sm font-medium mb-2">
-                Percentage (optional)
+                Global Percentage
               </label>
               <input
                 type="number"
@@ -215,9 +262,25 @@ export const DirectMessages: React.FC<DirectMessagesProps> = ({ username, onBala
                 onChange={(e) => setPercentage(e.target.value)}
                 className="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-400"
                 min="0"
-                max="100"
-                placeholder="0-100"
+                placeholder="0+"
               />
+            </div>
+
+            <div>
+              <label className="block text-gray-300 text-sm font-medium mb-2">
+                Your Percentage
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  value={userPercentage}
+                  onChange={(e) => setUserPercentage(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                  min="0"
+                  placeholder="0+"
+                />
+                <Percent className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-yellow-400" />
+              </div>
             </div>
 
             <div>
@@ -279,6 +342,19 @@ export const DirectMessages: React.FC<DirectMessagesProps> = ({ username, onBala
                       </option>
                     ))}
                   </select>
+                  {reviewer && (
+                    <button
+                      onClick={() => toggleReviewerPermission(reviewer)}
+                      className={`p-2 rounded transition-colors ${
+                        reviewerPermissions[reviewer]
+                          ? 'bg-green-500 text-white'
+                          : 'bg-gray-500 text-gray-300'
+                      }`}
+                      title="Grant reviewer access permission"
+                    >
+                      <Shield className="w-4 h-4" />
+                    </button>
+                  )}
                   {index > 0 && (
                     <button
                       onClick={() => removeReviewer(index)}
@@ -314,24 +390,50 @@ export const DirectMessages: React.FC<DirectMessagesProps> = ({ username, onBala
             )}
           </div>
 
-          {/* Coin Attachment Mode Explanation */}
+          {/* Reviewer Permissions Display */}
+          {Object.keys(reviewerPermissions).some(r => reviewerPermissions[r]) && (
+            <div className="bg-green-900/20 border border-green-500 p-3 rounded-lg">
+              <div className="flex items-center space-x-2 mb-2">
+                <Shield className="w-4 h-4 text-green-400" />
+                <span className="text-green-400 font-medium">Reviewer Permissions Granted</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(reviewerPermissions)
+                  .filter(([_, hasPermission]) => hasPermission)
+                  .map(([reviewer]) => (
+                    <span key={reviewer} className="bg-green-500/20 text-green-400 px-2 py-1 rounded text-sm">
+                      {reviewer}
+                    </span>
+                  ))}
+              </div>
+            </div>
+          )}
+
+          {/* Game Settings Explanation */}
           <div className="bg-gray-600 p-3 rounded-lg">
             <div className="flex items-center space-x-2 mb-2">
               <Settings className="w-4 h-4 text-yellow-400" />
               <span className="text-yellow-400 font-medium">Game Settings</span>
             </div>
-            <p className="text-gray-300 text-sm mb-2">
-              <strong>Coin Mode:</strong> {coinAttachmentMode === 'different' 
-                ? 'Participants can attach different amounts. Rewards distributed proportionally.'
-                : 'All participants must attach the same amount. Rewards distributed equally.'
-              }
-            </p>
-            <p className="text-gray-300 text-sm">
-              <strong>Multi-Reviewer System:</strong> {reviewers.filter(r => r.trim()).length > 1 
-                ? `${reviewers.filter(r => r.trim()).length} reviewers selected. Cascading review process with ${reviewerTimer}min between phases.`
-                : 'Single reviewer system. Standard review process.'
-              }
-            </p>
+            <div className="space-y-1 text-gray-300 text-sm">
+              <p>
+                <strong>Coin Mode:</strong> {coinAttachmentMode === 'different' 
+                  ? 'Participants can attach different amounts. Rewards distributed proportionally.'
+                  : 'All participants must attach the same amount. Rewards distributed equally.'
+                }
+              </p>
+              <p>
+                <strong>Multi-Reviewer System:</strong> {reviewers.filter(r => r.trim()).length > 1 
+                  ? `${reviewers.filter(r => r.trim()).length} reviewers selected. Cascading review process with ${reviewerTimer}min between phases.`
+                  : 'Single reviewer system. Standard review process.'
+                }
+              </p>
+              {userPercentage && (
+                <p>
+                  <strong>Your Percentage:</strong> You will receive {userPercentage}% of your attached coins back regardless of outcome.
+                </p>
+              )}
+            </div>
           </div>
 
           <button
@@ -365,7 +467,7 @@ export const DirectMessages: React.FC<DirectMessagesProps> = ({ username, onBala
                     key={message.id}
                     message={message}
                     currentUser={username}
-                    onUpdate={refreshMessages}
+                    onUpdate={loadData}
                     onBalanceUpdate={onBalanceUpdate}
                   />
                 ))}
