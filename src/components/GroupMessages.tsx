@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Send, MessageCircle, Users, Settings, Plus, Minus } from 'lucide-react';
-import { StorageUtils } from '../utils/storage';
+import { DatabaseService } from '../services/database';
 import { Message, Group } from '../types';
 import { MessageItem } from './MessageItem';
 
@@ -26,7 +26,7 @@ export const GroupMessages: React.FC<GroupMessagesProps> = ({ username, groups, 
   }, [username]);
 
   const refreshMessages = () => {
-    const groupMessages = StorageUtils.getUserMessages(username)
+    const groupMessages = DatabaseService.getUserMessages(username)
       .filter(m => m.groupId)
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     setMessages(groupMessages);
@@ -122,7 +122,7 @@ export const GroupMessages: React.FC<GroupMessagesProps> = ({ username, groups, 
       };
     });
 
-    StorageUtils.saveMessage(message);
+    DatabaseService.saveMessage(message);
     setMessageContent('');
     setPercentage('');
     setReviewers(['']);

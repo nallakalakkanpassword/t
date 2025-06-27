@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Plus, Users, Search } from 'lucide-react';
-import { StorageUtils } from '../utils/storage';
+import { DatabaseService } from '../services/database';
 import { Group } from '../types';
 
 interface CreateGroupProps {
@@ -15,7 +15,7 @@ export const CreateGroup: React.FC<CreateGroupProps> = ({ username, onClose, onG
   const [searchTerm, setSearchTerm] = useState('');
   const [error, setError] = useState('');
 
-  const allUsers = StorageUtils.getUsers().filter(u => u.username !== username);
+  const allUsers = DatabaseService.getUsers().filter(u => u.username !== username);
   const filteredUsers = allUsers.filter(user => 
     user.username.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -55,7 +55,7 @@ export const CreateGroup: React.FC<CreateGroupProps> = ({ username, onClose, onG
       createdAt: new Date().toISOString()
     };
 
-    StorageUtils.saveGroup(group);
+    DatabaseService.saveGroup(group);
     onGroupCreated();
     onClose();
   };

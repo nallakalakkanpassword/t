@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { MessageCircle, Users, Plus, Send } from 'lucide-react';
-import { StorageUtils } from '../utils/storage';
+import { DatabaseService } from '../services/database';
 import { Group } from '../types';
 import { DirectMessages } from './DirectMessages';
 import { GroupMessages } from './GroupMessages';
@@ -17,12 +17,12 @@ export const Messaging: React.FC<MessagingProps> = ({ username, onBalanceUpdate 
   const [groups, setGroups] = useState<Group[]>([]);
 
   useEffect(() => {
-    const userGroups = StorageUtils.getUserGroups(username);
+    const userGroups = DatabaseService.getUserGroups(username);
     setGroups(userGroups);
   }, [username]);
 
   const refreshGroups = () => {
-    const userGroups = StorageUtils.getUserGroups(username);
+    const userGroups = DatabaseService.getUserGroups(username);
     setGroups(userGroups);
   };
 

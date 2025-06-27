@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Send, ArrowDownLeft, Users } from 'lucide-react';
-import { StorageUtils } from '../utils/storage';
+import { DatabaseService } from '../services/database';
 import { Transaction } from '../types';
 
 interface SendReceiveProps {
@@ -27,8 +27,8 @@ export const SendReceive: React.FC<SendReceiveProps> = ({ username, onBalanceUpd
       return;
     }
 
-    const sender = StorageUtils.getUserByUsername(username);
-    const recipientUser = StorageUtils.getUserByUsername(recipient);
+    const sender = DatabaseService.getUserByUsername(username);
+    const recipientUser = DatabaseService.getUserByUsername(recipient);
 
     if (!recipientUser) {
       setError('Recipient user not found');
@@ -41,8 +41,8 @@ export const SendReceive: React.FC<SendReceiveProps> = ({ username, onBalanceUpd
     }
 
     // Update balances
-    StorageUtils.updateUserBalance(username, sender!.balance - sendAmount);
-    StorageUtils.updateUserBalance(recipient, recipientUser.balance + sendAmount);
+    DatabaseService.updateUserBalance(username, sender!.balance - sendAmount);
+    DatabaseService.updateUserBalance(recipient, recipientUser.balance + sendAmount);
 
     // Add transaction
     const transaction: Transaction = {
@@ -53,7 +53,7 @@ export const SendReceive: React.FC<SendReceiveProps> = ({ username, onBalanceUpd
       timestamp: new Date().toISOString(),
       type: 'send'
     };
-    StorageUtils.addTransaction(transaction);
+    DatabaseService.addTransaction(transaction);
 
     setSuccess(`Successfully sent ${sendAmount} t coins to ${recipient}`);
     setRecipient('');
@@ -64,7 +64,7 @@ export const SendReceive: React.FC<SendReceiveProps> = ({ username, onBalanceUpd
     setTimeout(() => setSuccess(''), 3000);
   };
 
-  const allUsers = StorageUtils.getUsers().filter(u => u.username !== username);
+  const allUsers = DatabaseService.getUsers().filter(u => u.username !== username);
 
   return (
     <div className="space-y-6">
