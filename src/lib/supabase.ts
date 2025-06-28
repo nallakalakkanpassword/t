@@ -11,10 +11,17 @@ if (!supabaseUrl || !supabaseAnonKey) {
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey);
 
 // Set current user for RLS policies
-export const setCurrentUser = (username: string) => {
-  return supabase.rpc('set_config', {
+export const setCurrentUser = async (username: string) => {
+  const { error } = await supabase.rpc('set_config', {
     setting_name: 'app.current_user',
     setting_value: username,
     is_local: true
   });
+  
+  if (error) {
+    console.error('Error setting current user:', error);
+    throw error;
+  }
+  
+  return true;
 };

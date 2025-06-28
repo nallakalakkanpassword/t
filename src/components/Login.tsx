@@ -24,7 +24,10 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
     setLoading(true);
     try {
+      // First set the current user context for RLS
       await DatabaseService.setCurrentUser(username);
+      
+      // Check if user exists
       let user = await DatabaseService.getUserByUsername(username);
       
       if (!user) {

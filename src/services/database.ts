@@ -4,7 +4,7 @@ import { User, Transaction, Message, Group, PublicMessage } from '../types';
 export class DatabaseService {
   // Set current user for RLS
   static async setCurrentUser(username: string) {
-    await setCurrentUser(username);
+    return await setCurrentUser(username);
   }
 
   // User management
@@ -30,6 +30,9 @@ export class DatabaseService {
   }
 
   static async saveUser(user: User): Promise<User> {
+    // Ensure current user is set before attempting to save
+    await this.setCurrentUser(user.username);
+    
     const { data, error } = await supabase
       .from('users')
       .upsert(user, { onConflict: 'username' })
