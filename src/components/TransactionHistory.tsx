@@ -1,15 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { History, ArrowUpRight, ArrowDownLeft, Clock } from 'lucide-react';
 import { DatabaseService } from '../services/database';
-
-interface Transaction {
-  id: string;
-  from_user: string;
-  to_user: string;
-  amount: number;
-  timestamp: string;
-  type: string;
-}
+import { Transaction } from '../types';
 
 interface TransactionHistoryProps {
   username: string;
@@ -22,9 +14,10 @@ export const TransactionHistory: React.FC<TransactionHistoryProps> = ({ username
   useEffect(() => {
     const fetchTransactions = async () => {
       try {
+        await DatabaseService.setCurrentUser(username);
         const userTransactions = await DatabaseService.getUserTransactions(username);
         setTransactions(userTransactions.sort((a, b) => 
-          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          new Date(b.timestamp!).getTime() - new Date(a.timestamp!).getTime()
         ));
       } catch (error) {
         console.error('Error fetching transactions:', error);
@@ -93,7 +86,7 @@ export const TransactionHistory: React.FC<TransactionHistoryProps> = ({ username
                       {isSent ? 'Sent to' : 'Received from'} {otherUser}
                     </p>
                     <p className="text-gray-400 text-sm">
-                      {formatDate(transaction.timestamp)}
+                      {formatDate(transaction.timestamp!)}
                     </p>
                   </div>
                 </div>

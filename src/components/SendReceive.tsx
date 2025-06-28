@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Send, ArrowDownLeft, Users } from 'lucide-react';
 import { DatabaseService } from '../services/database';
 import { Transaction } from '../types';
@@ -9,12 +9,26 @@ interface SendReceiveProps {
 }
 
 export const SendReceive: React.FC<SendReceiveProps> = ({ username, onBalanceUpdate }) => {
-  const [activeMode, setActiveMode] = useState<'send' | 'receive'>('send');
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
+
+  useEffect(() => {
+    const loadUsers = async () => {
+      try {
+        await DatabaseService.setCurrentUser(username);
+        const users = await DatabaseService.getUsers();
+        setAllUsers(users.filter(u => u.username !== username));
+      } catch (error) {
+        console.error('Error loading users:', error);
+      }
+    };
+
+    loadUsers();
+  }, [username]);
 
   const handleSend = async () => {
     if (!recipient.trim()) {
@@ -53,9 +67,8 @@ export const SendReceive: React.FC<SendReceiveProps> = ({ username, onBalanceUpd
 
       // Add transaction
       const transaction: Transaction = {
-        id: Date.now().toString(),
-        from: username,
-        to: recipient,
+        from_user: username,
+        to_user: recipient,
         amount: sendAmount,
         timestamp: new Date().toISOString(),
         type: 'send'
@@ -76,8 +89,6 @@ export const SendReceive: React.FC<SendReceiveProps> = ({ username, onBalanceUpd
       setIsLoading(false);
     }
   };
-
-  const allUsers = DatabaseService.getUsers().filter(u => u.username !== username);
 
   return (
     <div className="space-y-6">

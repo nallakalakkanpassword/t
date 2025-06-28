@@ -17,13 +17,17 @@ export const Messaging: React.FC<MessagingProps> = ({ username, onBalanceUpdate 
   const [groups, setGroups] = useState<Group[]>([]);
 
   useEffect(() => {
-    const userGroups = DatabaseService.getUserGroups(username);
-    setGroups(userGroups);
+    refreshGroups();
   }, [username]);
 
-  const refreshGroups = () => {
-    const userGroups = DatabaseService.getUserGroups(username);
-    setGroups(userGroups);
+  const refreshGroups = async () => {
+    try {
+      await DatabaseService.setCurrentUser(username);
+      const userGroups = await DatabaseService.getUserGroups(username);
+      setGroups(userGroups);
+    } catch (error) {
+      console.error('Error loading groups:', error);
+    }
   };
 
   return (

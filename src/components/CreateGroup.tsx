@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Plus, Users, Search } from 'lucide-react';
 import { DatabaseService } from '../services/database';
 import { Group } from '../types';
@@ -14,8 +14,21 @@ export const CreateGroup: React.FC<CreateGroupProps> = ({ username, onClose, onG
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [error, setError] = useState('');
+  const [allUsers, setAllUsers] = useState<any[]>([]);
 
-  const allUsers = DatabaseService.getUsers().filter(u => u.username !== username);
+  useEffect(() => {
+    const loadUsers = async () => {
+      try {
+        const users = await DatabaseService.getUsers();
+        setAllUsers(users.filter(u => u.username !== username));
+      } catch (error) {
+        console.error('Error loading users:', error);
+      }
+    };
+
+    loadUsers();
+  }, [username]);
+
   const filteredUsers = allUsers.filter(user => 
     user.username.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -36,7 +49,7 @@ export const CreateGroup: React.FC<CreateGroupProps> = ({ username, onClose, onG
     setSelectedMembers([]);
   };
 
-  const createGroup = () => {
+  const createGroup = async () => {
     if (!groupName.trim()) {
       setError('Please enter a group name');
       return;
@@ -47,17 +60,21 @@ export const CreateGroup: React.FC<CreateGroupProps> = ({ username, onClose, onG
       return;
     }
 
-    const group: Group = {
-      id: Date.now().toString(),
-      name: groupName.trim(),
-      members: [username, ...selectedMembers],
-      createdBy: username,
-      createdAt: new Date().toISOString()
-    };
+    try {
+      const group: Group = {
+        name: groupName.trim(),
+        members: [username, ...selectedMembers],
+        created_by: username,
+        created_at: new Date().toISOString()
+      };
 
-    DatabaseService.saveGroup(group);
-    onGroupCreated();
-    onClose();
+      await DatabaseService.saveGroup(group);
+      onGroupCreated();
+      onClose();
+    } catch (error) {
+      console.error('Error creating group:', error);
+      setError('Failed to create group. Please try again.');
+    }
   };
 
   return (
@@ -157,7 +174,7 @@ export const CreateGroup: React.FC<CreateGroupProps> = ({ username, onClose, onG
                         <span className="text-yellow-400 font-bold">t</span>
                         <span>{user.balance}</span>
                         <span>•</span>
-                        <span>Joined {new Date(user.createdAt).toLocaleDateString()}</span>
+                        <span>Joined {new Date(user.created_at).toLocaleDateString()}</span>
                       </div>
                     </div>
                     {selectedMembers.includes(user.username) && (
