@@ -100,9 +100,9 @@ export const SendReceive: React.FC<SendReceiveProps> = ({ username, onBalanceUpd
                 setError('');
                 setSuccess('');
               }}
-              className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent"
-              placeholder="Enter recipient username"
               disabled={isLoading}
+              className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent disabled:opacity-50"
+              placeholder="Enter recipient username"
             />
           </div>
 
@@ -118,11 +118,11 @@ export const SendReceive: React.FC<SendReceiveProps> = ({ username, onBalanceUpd
                 setError('');
                 setSuccess('');
               }}
-              className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent"
+              disabled={isLoading}
+              className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent disabled:opacity-50"
               placeholder="Enter amount"
               min="0"
               step="0.01"
-              disabled={isLoading}
             />
           </div>
 
@@ -157,8 +157,8 @@ export const SendReceive: React.FC<SendReceiveProps> = ({ username, onBalanceUpd
               <button
                 key={user.username}
                 onClick={() => setRecipient(user.username)}
-                className="bg-gray-700 hover:bg-gray-600 p-3 rounded-lg text-left transition-colors"
                 disabled={isLoading}
+                className="bg-gray-700 hover:bg-gray-600 p-3 rounded-lg text-left transition-colors disabled:opacity-50"
               >
                 <div className="text-white font-medium">{user.username}</div>
                 <div className="text-gray-400 text-sm flex items-center space-x-1">
