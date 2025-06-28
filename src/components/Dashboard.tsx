@@ -15,6 +15,7 @@ interface DashboardProps {
 export const Dashboard: React.FC<DashboardProps> = ({ username, onLogout }) => {
   const [user, setUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState<'wallet' | 'history' | 'messages' | 'public'>('wallet');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadUser();
@@ -27,10 +28,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ username, onLogout }) => {
       setUser(userData);
     } catch (error) {
       console.error('Error loading user:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  if (!user) return null;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-800 flex items-center justify-center">
+        <div className="text-white text-xl">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-800 flex items-center justify-center">
+        <div className="text-white text-xl">User not found</div>
+      </div>
+    );
+  }
 
   const tabs = [
     { id: 'wallet', label: 'Wallet', icon: Coins },
