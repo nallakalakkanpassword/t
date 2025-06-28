@@ -23,9 +23,9 @@ export class DatabaseService {
       .from('users')
       .select('*')
       .eq('username', username)
-      .single();
+      .maybeSingle();
     
-    if (error && error.code !== 'PGRST116') throw error;
+    if (error) throw error;
     return data;
   }
 
