@@ -33,10 +33,11 @@ export default function Login({ onLogin }: LoginProps) {
           // Set the session variable before creating user record
           await supabase.rpc('set_current_user', { username });
           
-          // Create user record
+          // Create user record with the authenticated user's ID
           const { error: userError } = await supabase
             .from('users')
             .upsert({ 
+              id: authData.user.id,
               username,
               balance: 100 
             }, { 
@@ -60,10 +61,11 @@ export default function Login({ onLogin }: LoginProps) {
           // Set the session variable before upserting user record
           await supabase.rpc('set_current_user', { username });
           
-          // Upsert user record to ensure it exists
+          // Upsert user record with the authenticated user's ID to ensure it exists
           const { error: userError } = await supabase
             .from('users')
             .upsert({ 
+              id: authData.user.id,
               username,
               balance: 100 
             }, { 
@@ -77,7 +79,15 @@ export default function Login({ onLogin }: LoginProps) {
       }
     } catch (error: any) {
       console.error('Login error:', error);
-      setError(error.message || 'An error occurred during authentication');
+      
+      // Handle specific error cases with user-friendly messages
+      if (error.message === 'User already registered' && isSignUp) {
+        setError('This email is already registered. Please sign in instead.');
+      } else if (error.message?.includes('row-level security policy')) {
+        setError('Authentication failed. Please try again.');
+      } else {
+        setError(error.message || 'An error occurred during authentication');
+      }
     } finally {
       setLoading(false);
     }
