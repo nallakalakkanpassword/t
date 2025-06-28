@@ -16,6 +16,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ username, onLogout }) => {
   const [user, setUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState<'wallet' | 'history' | 'messages' | 'public'>('wallet');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadUser();
@@ -23,11 +24,31 @@ export const Dashboard: React.FC<DashboardProps> = ({ username, onLogout }) => {
 
   const loadUser = async () => {
     try {
+      setLoading(true);
+      setError(null);
+      
+      // Set current user context first
       await DatabaseService.setCurrentUser(username);
-      const userData = await DatabaseService.getUserByUsername(username);
+      
+      // Try to get existing user
+      let userData = await DatabaseService.getUserByUsername(username);
+      
+      // If user doesn't exist, create them
+      if (!userData) {
+        userData = {
+          username,
+          balance: 100,
+          created_at: new Date().toISOString()
+        };
+        
+        // Save the new user
+        userData = await DatabaseService.saveUser(userData);
+      }
+      
       setUser(userData);
     } catch (error) {
       console.error('Error loading user:', error);
+      setError('Failed to load user data. Please try logging in again.');
     } finally {
       setLoading(false);
     }
@@ -41,10 +62,34 @@ export const Dashboard: React.FC<DashboardProps> = ({ username, onLogout }) => {
     );
   }
 
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-800 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-red-400 text-xl mb-4">{error}</div>
+          <button
+            onClick={onLogout}
+            className="bg-yellow-400 text-gray-900 px-6 py-2 rounded-lg font-medium hover:bg-yellow-500 transition-colors"
+          >
+            Back to Login
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (!user) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-800 flex items-center justify-center">
-        <div className="text-white text-xl">User not found</div>
+        <div className="text-center">
+          <div className="text-white text-xl mb-4">User not found</div>
+          <button
+            onClick={onLogout}
+            className="bg-yellow-400 text-gray-900 px-6 py-2 rounded-lg font-medium hover:bg-yellow-500 transition-colors"
+          >
+            Back to Login
+          </button>
+        </div>
       </div>
     );
   }

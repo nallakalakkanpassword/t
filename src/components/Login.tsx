@@ -26,22 +26,25 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setError('');
 
     try {
-      // First set the current user context for RLS
+      // Set current user context for RLS
       await DatabaseService.setCurrentUser(username);
       
       // Check if user exists
       let user = await DatabaseService.getUserByUsername(username);
       
+      // If user doesn't exist, create them
       if (!user) {
-        // Create new user with 100 default coins
         user = {
           username,
           balance: 100,
           created_at: new Date().toISOString()
         };
+        
+        // Save the new user
         await DatabaseService.saveUser(user);
       }
 
+      // Login successful
       onLogin(username);
     } catch (error) {
       console.error('Login error:', error);
