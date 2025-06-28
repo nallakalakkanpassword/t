@@ -14,8 +14,9 @@ export const SendReceive: React.FC<SendReceiveProps> = ({ username, onBalanceUpd
   const [amount, setAmount] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!recipient.trim()) {
       setError('Please enter recipient username');
       return;
@@ -27,41 +28,53 @@ export const SendReceive: React.FC<SendReceiveProps> = ({ username, onBalanceUpd
       return;
     }
 
-    const sender = DatabaseService.getUserByUsername(username);
-    const recipientUser = DatabaseService.getUserByUsername(recipient);
-
-    if (!recipientUser) {
-      setError('Recipient user not found');
-      return;
-    }
-
-    if (sender!.balance < sendAmount) {
-      setError('Insufficient balance');
-      return;
-    }
-
-    // Update balances
-    DatabaseService.updateUserBalance(username, sender!.balance - sendAmount);
-    DatabaseService.updateUserBalance(recipient, recipientUser.balance + sendAmount);
-
-    // Add transaction
-    const transaction: Transaction = {
-      id: Date.now().toString(),
-      from: username,
-      to: recipient,
-      amount: sendAmount,
-      timestamp: new Date().toISOString(),
-      type: 'send'
-    };
-    DatabaseService.addTransaction(transaction);
-
-    setSuccess(`Successfully sent ${sendAmount} t coins to ${recipient}`);
-    setRecipient('');
-    setAmount('');
+    setIsLoading(true);
     setError('');
-    onBalanceUpdate();
 
-    setTimeout(() => setSuccess(''), 3000);
+    try {
+      const sender = await DatabaseService.getUserByUsername(username);
+      const recipientUser = await DatabaseService.getUserByUsername(recipient);
+
+      if (!recipientUser) {
+        setError('Recipient user not found');
+        setIsLoading(false);
+        return;
+      }
+
+      if (!sender || sender.balance < sendAmount) {
+        setError('Insufficient balance');
+        setIsLoading(false);
+        return;
+      }
+
+      // Update balances
+      await DatabaseService.updateUserBalance(username, sender.balance - sendAmount);
+      await DatabaseService.updateUserBalance(recipient, recipientUser.balance + sendAmount);
+
+      // Add transaction
+      const transaction: Transaction = {
+        id: Date.now().toString(),
+        from: username,
+        to: recipient,
+        amount: sendAmount,
+        timestamp: new Date().toISOString(),
+        type: 'send'
+      };
+      await DatabaseService.addTransaction(transaction);
+
+      setSuccess(`Successfully sent ${sendAmount} t coins to ${recipient}`);
+      setRecipient('');
+      setAmount('');
+      setError('');
+      onBalanceUpdate();
+
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      setError('Failed to send transaction. Please try again.');
+      console.error('Send transaction error:', err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const allUsers = DatabaseService.getUsers().filter(u => u.username !== username);
@@ -89,6 +102,7 @@ export const SendReceive: React.FC<SendReceiveProps> = ({ username, onBalanceUpd
               }}
               className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent"
               placeholder="Enter recipient username"
+              disabled={isLoading}
             />
           </div>
 
@@ -108,6 +122,7 @@ export const SendReceive: React.FC<SendReceiveProps> = ({ username, onBalanceUpd
               placeholder="Enter amount"
               min="0"
               step="0.01"
+              disabled={isLoading}
             />
           </div>
 
@@ -121,10 +136,11 @@ export const SendReceive: React.FC<SendReceiveProps> = ({ username, onBalanceUpd
 
           <button
             onClick={handleSend}
-            className="w-full bg-gradient-to-r from-yellow-400 to-orange-500 text-white py-3 rounded-lg font-semibold hover:from-yellow-500 hover:to-orange-600 transition-all duration-300 flex items-center justify-center space-x-2"
+            disabled={isLoading}
+            className="w-full bg-gradient-to-r from-yellow-400 to-orange-500 text-white py-3 rounded-lg font-semibold hover:from-yellow-500 hover:to-orange-600 transition-all duration-300 flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Send className="w-5 h-5" />
-            <span>Send t Coins</span>
+            <span>{isLoading ? 'Sending...' : 'Send t Coins'}</span>
           </button>
         </div>
       </div>
@@ -142,6 +158,7 @@ export const SendReceive: React.FC<SendReceiveProps> = ({ username, onBalanceUpd
                 key={user.username}
                 onClick={() => setRecipient(user.username)}
                 className="bg-gray-700 hover:bg-gray-600 p-3 rounded-lg text-left transition-colors"
+                disabled={isLoading}
               >
                 <div className="text-white font-medium">{user.username}</div>
                 <div className="text-gray-400 text-sm flex items-center space-x-1">
